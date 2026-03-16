@@ -1,121 +1,29 @@
 import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { Dashboard } from './screens/dashboard'
+import { WorkoutSession } from './screens/workout-session'
+import { Coach } from './screens/coach'
+import { ProgramOverview } from './screens/program'
+import { Progress } from './screens/progress'
+import { useOffline } from './hooks/use-offline'
 
-function App() {
-  const [count, setCount] = useState(0)
+type Screen = 'dashboard' | 'workout' | 'coach' | 'program' | 'progress'
+const SCREENS: Record<Screen, React.FC> = { dashboard: Dashboard, workout: WorkoutSession, coach: Coach, program: ProgramOverview, progress: Progress }
 
+export default function App() {
+  const [screen, setScreen] = useState<Screen>('dashboard')
+  const { online } = useOffline()
+  const ActiveScreen = SCREENS[screen]
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+    <div className="app">
+      {!online && <div className="offline-banner">offline — data will sync when connected</div>}
+      <ActiveScreen />
+      <nav className="bottom-nav">
+        <button className={screen === 'dashboard' ? 'active' : ''} onClick={() => setScreen('dashboard')}>Home</button>
+        <button className={screen === 'workout' ? 'active' : ''} onClick={() => setScreen('workout')}>Workout</button>
+        <button className={screen === 'coach' ? 'active' : ''} onClick={() => setScreen('coach')}>Coach</button>
+        <button className={screen === 'program' ? 'active' : ''} onClick={() => setScreen('program')}>Program</button>
+        <button className={screen === 'progress' ? 'active' : ''} onClick={() => setScreen('progress')}>Progress</button>
+      </nav>
+    </div>
   )
 }
-
-export default App

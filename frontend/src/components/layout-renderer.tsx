@@ -1,4 +1,4 @@
-import { LayoutComponent } from '../types'
+import type { LayoutComponent } from '../types'
 import { Header } from './header'
 import { StatCard } from './stat-card'
 import { ExerciseCard } from './exercise-card'
