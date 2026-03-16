@@ -8,8 +8,10 @@ def create_app():
     Base.metadata.create_all(bind=engine)
     from server.routes.chat import router as chat_router
     from server.routes.workout import router as workout_router
+    from server.routes.video import router as video_router
     app.include_router(chat_router, prefix="/api")
     app.include_router(workout_router, prefix="/api")
+    app.include_router(video_router, prefix="/api")
     return app
 
 app = create_app()
