@@ -1,0 +1,9 @@
+{
+  "name": "SpotMe",
+  "short_name": "SpotMe",
+  "description": "AI-powered workout tracker",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1a1a",
+  "theme_color": "#ff6b35"
+}
