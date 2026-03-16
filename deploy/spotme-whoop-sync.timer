@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily Whoop biometric sync
+
+[Timer]
+OnCalendar=*-*-* 07:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
