@@ -26,6 +26,9 @@ dev = [
     "ruff>=0.3",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ["server"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
