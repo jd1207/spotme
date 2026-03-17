@@ -1,27 +1,27 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api'
 import { ProgramWeek } from './program-week'
-import { ProgramSection } from './program-section'
 
-interface ProgramSectionData { title: string; content: string }
-interface WeekItem { number: number; title: string; items: string[] }
-interface ProgressionPoint { week: number; weight: number; label: string }
-
-interface LoggedWorkout {
+interface DayData {
+  day_of_week: string
+  type: string
+  planned: string
+  note: string
   status: string
-  duration: number | null
-  exercises: Array<{ name: string; sets: Array<{ weight: number; reps: number; rpe: number | null }> }>
 }
 
-interface WhoopEntry { recovery: number | null; hrv: number | null }
+interface WeekData {
+  number: number
+  title: string
+  days: DayData[]
+}
+
+interface ProgressionPoint { week: number; weight: number; label: string }
 
 interface ProgramData {
   has_program: boolean
-  sections: ProgramSectionData[]
-  weeks: WeekItem[]
+  weeks: WeekData[]
   progression: ProgressionPoint[]
-  logged: Record<string, LoggedWorkout>
-  whoop: Record<string, WhoopEntry>
   stats: { total_workouts: number; completed_workouts: number; today: string }
 }
 
@@ -71,17 +71,7 @@ export function ProgramView() {
       )}
 
       {data.weeks.map(w => (
-        <ProgramWeek
-          key={w.number}
-          week={w}
-          logged={data.logged}
-          whoop={data.whoop}
-          today={data.stats.today}
-        />
-      ))}
-
-      {data.sections.map((s, i) => (
-        <ProgramSection key={i} title={s.title} content={s.content} />
+        <ProgramWeek key={w.number} week={w} today={data.stats.today} />
       ))}
     </div>
   )
