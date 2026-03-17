@@ -32,7 +32,7 @@ def _get_access_token(db: Session) -> str | None:
 @router.get("/whoop/status")
 async def whoop_status(db: Session = Depends(get_db)):
     token = _get_access_token(db)
-    configured = settings.whoop_client_id and settings.whoop_client_secret
+    configured = bool(settings.whoop_client_id and settings.whoop_client_secret)
     return {
         "connected": token is not None,
         "oauth_available": configured,
@@ -86,31 +86,13 @@ async def whoop_callback(code: str, state: str, db: Session = Depends(get_db)):
         return RedirectResponse(f"/?whoop=error&reason={str(e)[:50]}")
 
 
-@router.post("/whoop/login")
-async def whoop_login(data: dict, db: Session = Depends(get_db)):
-    email = data.get("email", "")
-    password = data.get("password", "")
-    if not email or not password:
-        return {"connected": False, "error": "email and password required"}
-    try:
-        from whoop.auth import WhoopAuth
-        auth = WhoopAuth()
-        await auth.login_password(email, password)
-        token_row = _get_token(db)
-        if token_row:
-            token_row.access_token = auth.access_token
-            token_row.refresh_token = auth.refresh_token
-        else:
-            db.add(WhoopToken(
-                access_token=auth.access_token,
-                refresh_token=auth.refresh_token,
-            ))
+@router.post("/whoop/disconnect")
+async def whoop_disconnect(db: Session = Depends(get_db)):
+    token_row = _get_token(db)
+    if token_row:
+        db.delete(token_row)
         db.commit()
-        return {"connected": True}
-    except ImportError:
-        return {"connected": False, "error": "whoop-write-api not installed"}
-    except Exception as e:
-        return {"connected": False, "error": str(e)}
+    return {"disconnected": True}
 
 
 @router.get("/whoop/sync")
