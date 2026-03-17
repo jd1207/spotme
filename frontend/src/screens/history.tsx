@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api'
+import { WorkoutDetail } from '../components/workout-detail'
+import { PrsTab } from '../components/prs-tab'
 
 interface HistoryProps {
   onNavigateWorkout?: () => void
@@ -7,12 +9,19 @@ interface HistoryProps {
 
 type Segment = 'workouts' | 'prs'
 
+interface WorkoutExercise {
+  name: string
+  sets: Array<{ weight: number; reps: number; rpe: number | null }>
+}
+
 interface WorkoutEntry {
   id: number
   date: string
   type: string
   status: string
   duration: number | null
+  exercises: WorkoutExercise[]
+  recovery: number | null
 }
 
 export function History({ onNavigateWorkout }: HistoryProps) {
@@ -28,13 +37,6 @@ export function History({ onNavigateWorkout }: HistoryProps) {
   }, [])
 
   const today = new Date().toISOString().split('T')[0]
-
-  const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr + 'T12:00:00')
-    const day = d.toLocaleDateString('en-US', { weekday: 'short' })
-    const month = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    return `${day}, ${month}`
-  }
 
   return (
     <div className="history-screen">
@@ -59,32 +61,21 @@ export function History({ onNavigateWorkout }: HistoryProps) {
             </div>
           )}
           {workouts.map(w => (
-            <div key={w.id} className={`session-card ${w.status}`}>
-              <div className="session-card-content">
-                <div className="session-card-top">
-                  <span className="session-day">{formatDate(w.date)}</span>
-                  <span className="session-type">{w.type}</span>
-                </div>
-                {w.duration && (
-                  <p className="session-exercises">{w.duration} min</p>
-                )}
-              </div>
-              {w.status === 'active' && w.date === today && onNavigateWorkout && (
-                <button className="session-go-btn" onClick={onNavigateWorkout}>GO</button>
-              )}
-              {w.status === 'completed' && (
-                <span className="session-check">&#10003;</span>
-              )}
-            </div>
+            <WorkoutDetail
+              key={w.id}
+              date={w.date}
+              type={w.type}
+              status={w.status}
+              duration={w.duration}
+              exercises={w.exercises}
+              recovery={w.recovery}
+              onView={w.status === 'active' && w.date === today ? onNavigateWorkout : undefined}
+            />
           ))}
         </div>
       )}
 
-      {activeSegment === 'prs' && (
-        <div className="placeholder-view">
-          <p className="placeholder-text">Coming soon</p>
-        </div>
-      )}
+      {activeSegment === 'prs' && <PrsTab />}
     </div>
   )
 }

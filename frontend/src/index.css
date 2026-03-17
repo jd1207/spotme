@@ -1533,3 +1533,86 @@ button {
 .rest-btn:active { background: var(--border) !important; }
 .rest-btn-add { flex: 0; min-width: 50px; }
 .rest-btn-reset { color: var(--text-secondary); }
+
+/* ----------------------------------------------------------------
+   workout detail cards (history)
+   ---------------------------------------------------------------- */
+
+.workouts-list { display: flex; flex-direction: column; gap: 8px; }
+.workout-detail-card {
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  cursor: pointer;
+}
+.workout-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.workout-detail-left { display: flex; flex-direction: column; gap: 2px; }
+.workout-detail-date { font-size: 0.85rem; font-weight: 600; }
+.workout-detail-type { font-size: 0.75rem; color: var(--text-secondary); }
+.workout-detail-right { display: flex; align-items: center; gap: 8px; }
+.workout-detail-recovery { font-size: 0.85rem; font-weight: 700; }
+.workout-detail-check { color: var(--success); font-size: 1.1rem; }
+.workout-detail-go {
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+}
+.workout-detail-summary {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.workout-detail-exercises { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.workout-detail-exercise { display: flex; flex-direction: column; gap: 2px; }
+.workout-detail-exname { font-size: 0.8rem; font-weight: 600; }
+.workout-detail-sets { display: flex; flex-wrap: wrap; gap: 6px; }
+.workout-detail-set {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+/* ----------------------------------------------------------------
+   PRs tab
+   ---------------------------------------------------------------- */
+
+.history-loading, .history-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: var(--text-disabled);
+  font-size: 0.95rem;
+}
+.prs-list { display: flex; flex-direction: column; gap: 8px; }
+.pr-card {
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+}
+.pr-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.pr-exercise { font-size: 0.85rem; font-weight: 600; }
+.pr-e1rm { font-size: 0.9rem; font-weight: 700; color: var(--accent); }
+.pr-detail {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}

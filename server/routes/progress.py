@@ -15,3 +15,25 @@ async def get_progress(db: Session = Depends(get_db)):
         "hrv": [{"date": w.date, "value": w.hrv} for w in reversed(whoop_data)],
     }
     return {"bench_1rm_trend": bench_trend, "volume_trend": [], "whoop_trends": whoop_trends}
+
+
+@router.get("/progress/prs")
+async def get_prs(db: Session = Depends(get_db)):
+    """estimated 1RM PRs per exercise using Epley formula"""
+    exercise_names = [row[0] for row in db.query(Exercise.name).distinct().all()]
+    prs = []
+    for name in exercise_names:
+        best = (
+            db.query(Set.weight, Set.reps, Workout.date)
+            .join(Exercise, Set.exercise_id == Exercise.id)
+            .join(Workout, Exercise.workout_id == Workout.id)
+            .filter(Exercise.name == name, Set.completed == True, Set.reps <= 10, Set.reps >= 1)
+            .all()
+        )
+        if not best:
+            continue
+        top = max(best, key=lambda s: s.weight * (1 + s.reps / 30.0))
+        e1rm = round(top.weight * (1 + top.reps / 30.0), 1)
+        prs.append({"exercise": name, "weight": top.weight, "reps": top.reps, "e1rm": e1rm, "date": top.date})
+    prs.sort(key=lambda x: x["e1rm"], reverse=True)
+    return {"prs": prs}
