@@ -4,9 +4,10 @@ from sqlalchemy.orm import Session
 from server.database import get_db
 from server.schemas import ChatRequest, ChatResponse
 from server.services.claude_service import ClaudeService, assemble_context
+from sqlalchemy import func as sqlfunc
 from server.models import (
     Program, Workout, Exercise, Set, WhoopData,
-    Conversation, UserProfile, SystemMemory,
+    Conversation, UserProfile, SystemMemory, Meal,
 )
 from server.config import settings
 
@@ -95,7 +96,23 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     memory_row = db.query(SystemMemory).filter_by(key=MEMORY_KEY).first()
     memory_text = memory_row.content if memory_row else None
 
-    context = assemble_context(None, None, whoop_dict, history_dicts, profile_dict, memory_text, workout_context, set_history=set_history)
+    # today's meal totals for context
+    meal_row = db.query(
+        sqlfunc.sum(Meal.calories).label("calories"),
+        sqlfunc.sum(Meal.protein).label("protein"),
+        sqlfunc.sum(Meal.carbs).label("carbs"),
+        sqlfunc.sum(Meal.fat).label("fat"),
+    ).filter(Meal.date == date.today().isoformat()).first()
+    meal_totals = None
+    if meal_row and meal_row.calories:
+        meal_totals = {
+            "calories": meal_row.calories,
+            "protein": round(meal_row.protein or 0, 1),
+            "carbs": round(meal_row.carbs or 0, 1),
+            "fat": round(meal_row.fat or 0, 1),
+        }
+
+    context = assemble_context(None, None, whoop_dict, history_dicts, profile_dict, memory_text, workout_context, set_history=set_history, meal_totals=meal_totals)
     service = ClaudeService()
     result = await service.chat(request.message, context)
 
@@ -124,6 +141,19 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             memory_row.content = memory_update
         else:
             db.add(SystemMemory(key=MEMORY_KEY, content=memory_update))
+
+    # auto-save meal if claude estimated macros
+    meal_data = result.get("meal")
+    if meal_data and isinstance(meal_data, dict):
+        db.add(Meal(
+            date=date.today().isoformat(),
+            description=meal_data.get("description", ""),
+            calories=meal_data.get("calories"),
+            protein=meal_data.get("protein"),
+            carbs=meal_data.get("carbs"),
+            fat=meal_data.get("fat"),
+            meal_type=meal_data.get("meal_type"),
+        ))
 
     # save messages
     db.add(Conversation(role="user", content=request.message, context_type="chat", workout_id=request.workout_id))

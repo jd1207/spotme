@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api'
 import { RecoveryBanner } from '../components/recovery-banner'
+import { NutritionCard } from '../components/nutrition-card'
 import type { WhoopStats } from '../types'
 
 interface WorkoutHomeProps {
@@ -34,6 +35,7 @@ export function WorkoutHome({ onStartWorkout, onStartChat, onViewPast }: Workout
           strain={whoop.strain}
         />
       )}
+      <NutritionCard />
       {nextWorkout && !nextWorkout.startsWith('No program') && (
         <div className="workout-plan-preview">
           <span className="workout-plan-label">TODAY'S PLAN</span>

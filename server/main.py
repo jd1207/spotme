@@ -23,6 +23,7 @@ def create_app():
     from server.routes.layout import router as layout_router
     from server.routes.morning import router as morning_router
     from server.routes.program import router as program_router
+    from server.routes.meals import router as meals_router
     app.include_router(chat_router, prefix="/api")
     app.include_router(workout_router, prefix="/api")
     app.include_router(video_router, prefix="/api")
@@ -32,6 +33,7 @@ def create_app():
     app.include_router(layout_router, prefix="/api")
     app.include_router(morning_router, prefix="/api")
     app.include_router(program_router, prefix="/api")
+    app.include_router(meals_router, prefix="/api")
 
     if FRONTEND_DIR.exists():
         # serve static assets (js, css, icons, manifest, sw)

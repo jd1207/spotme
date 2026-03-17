@@ -43,6 +43,7 @@ Always respond with valid JSON:
   {"exercise": "Bench Press", "weight": 225, "reps": 5, "basis": "based on last session + green recovery"}
 - "profile" is optional (only when you learn new profile info)
 - "memory_update" is optional (only when training memory should change)
+- "meal" is optional (only when the user describes food they ate)
 
 Layout components available: header, stat_card, exercise_card, set_logger, rest_timer, text_block, video_prompt, chart, action_button, chat_bubble.
 
@@ -53,13 +54,23 @@ When Whoop data is available, adjust your coaching:
 - YELLOW (34-66% recovery): reduce RPE by 1, keep volume, monitor fatigue
 - RED (0-33% recovery): suggest deload — reduce weight 10-15%, cut volume 30%, or swap to mobility/recovery work
 
-Always mention the recovery zone when starting a workout. Factor sleep score into recommendations — below 60% sleep suggests shorter session."""
+Always mention the recovery zone when starting a workout. Factor sleep score into recommendations — below 60% sleep suggests shorter session.
+
+## Meal Tracking
+
+When the user describes a meal or food they ate, estimate the macros and include a "meal" field in your response:
+{"description": "200g chicken breast, cup of rice, broccoli", "calories": 650, "protein": 55, "carbs": 60, "fat": 12, "meal_type": "lunch"}
+
+Be specific about your estimates. If the user just says "I had chicken and rice", ask for approximate portions. Common estimates:
+- Chicken breast 200g: 330 cal, 62g protein, 0g carbs, 7g fat
+- Cup of white rice: 200 cal, 4g protein, 45g carbs, 0g fat
+- Large egg: 70 cal, 6g protein, 0g carbs, 5g fat"""
 
 RECOVERY_GREEN = 67
 RECOVERY_YELLOW = 34
 
 
-def assemble_context(program, workout, whoop, history, profile=None, memory=None, active_workout=None, set_history=None):
+def assemble_context(program, workout, whoop, history, profile=None, memory=None, active_workout=None, set_history=None, meal_totals=None):
     parts = []
     if profile:
         profile_parts = [f"User: {profile.get('name', 'unknown')}"]
@@ -100,6 +111,9 @@ def assemble_context(program, workout, whoop, history, profile=None, memory=None
             rpe_str = f" @ RPE {entry['rpe']}" if entry.get('rpe') else ""
             parts.append(f"  {entry['date']} {entry['exercise']}: {entry['weight']}lbs x {entry['reps']}{rpe_str}")
 
+    if meal_totals:
+        parts.append(f"Today's nutrition: {meal_totals['calories']} cal | {meal_totals['protein']}g protein | {meal_totals['carbs']}g carbs | {meal_totals['fat']}g fat")
+
     if history:
         parts.append("Recent messages:")
         for msg in history[-10:]:
@@ -118,11 +132,11 @@ class ClaudeService:
             raw_text = await _call_claude(system, message)
         except RuntimeError as e:
             logger.error("claude call failed: %s", e)
-            return {"response": "Having trouble reaching Claude right now. Try again in a sec.", "layout": None, "profile": None, "memory_update": None, "set_suggestion": None}
+            return {"response": "Having trouble reaching Claude right now. Try again in a sec.", "layout": None, "profile": None, "memory_update": None, "set_suggestion": None, "meal": None}
         try:
             parsed = json.loads(raw_text)
         except json.JSONDecodeError:
-            return {"response": raw_text, "layout": None, "profile": None, "memory_update": None, "set_suggestion": None}
+            return {"response": raw_text, "layout": None, "profile": None, "memory_update": None, "set_suggestion": None, "meal": None}
         layout = parsed.get("layout")
         if layout:
             validation = validate_layout(layout)
@@ -133,6 +147,7 @@ class ClaudeService:
             "profile": parsed.get("profile"),
             "memory_update": parsed.get("memory_update"),
             "set_suggestion": parsed.get("set_suggestion"),
+            "meal": parsed.get("meal"),
         }
 
     async def analyze_form(self, frames_base64: list, context: str) -> dict:

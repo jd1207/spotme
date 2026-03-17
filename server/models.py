@@ -113,3 +113,16 @@ class WhoopSyncQueue(Base):
     retries = Column(Integer, default=0)
     last_error = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class Meal(Base):
+    __tablename__ = "meals"
+    id = Column(Integer, primary_key=True)
+    date = Column(String, nullable=False)
+    description = Column(Text, nullable=False)
+    calories = Column(Integer, nullable=True)
+    protein = Column(Float, nullable=True)
+    carbs = Column(Float, nullable=True)
+    fat = Column(Float, nullable=True)
+    meal_type = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
