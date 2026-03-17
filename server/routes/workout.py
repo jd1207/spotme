@@ -77,7 +77,7 @@ async def get_today_workout(db: Session = Depends(get_db)):
     for ex in exercises:
         sets = db.query(Set).filter_by(exercise_id=ex.id).all()
         exercise_data.append({"id": ex.id, "name": ex.name, "order": ex.order, "sets": [{"id": s.id, "weight": s.weight, "reps": s.reps, "rpe": s.rpe, "completed": s.completed} for s in sets]})
-    whoop = db.query(WhoopData).order_by(WhoopData.date.desc()).first()
+    whoop = db.query(WhoopData).filter_by(date=today).first()
     return {"id": workout.id, "date": workout.date, "status": workout.status, "exercises": exercise_data, "whoop_recovery": whoop.recovery_score if whoop else None}
 
 
