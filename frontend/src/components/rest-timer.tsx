@@ -14,40 +14,44 @@ export function RestTimer({ seconds, compact, onComplete }: RestTimerProps) {
 
   useEffect(() => {
     if (!active || remaining <= 0) return
-    const timer = setInterval(() => setRemaining((r) => r - 1), 1000)
-    return () => clearInterval(timer)
-  }, [active, remaining])
+    const id = setInterval(() => {
+      setRemaining(prev => {
+        if (prev <= 1) {
+          setActive(false)
+          onCompleteRef.current?.()
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(id)
+  }, [active])
 
+  // sync if parent changes seconds prop
   useEffect(() => {
-    if (active && remaining <= 0) {
-      setActive(false)
-      onCompleteRef.current?.()
-    }
-  }, [active, remaining])
+    if (!active) setRemaining(seconds)
+  }, [seconds])
 
-  const minutes = Math.floor(remaining / 60)
+  const toggle = () => setActive(!active)
+  const reset = () => { setActive(false); setRemaining(seconds) }
+  const addTime = (s: number) => setRemaining(prev => prev + s)
+
+  const mins = Math.floor(remaining / 60)
   const secs = remaining % 60
-  const timeText = `${minutes}:${secs.toString().padStart(2, '0')}`
+  const display = `${mins}:${secs.toString().padStart(2, '0')}`
 
-  if (compact) {
-    return (
-      <span className="rest-timer compact">
-        <span className="time">{timeText}</span>
-      </span>
-    )
-  }
+  if (compact) return <span className="rest-timer-compact">{display}</span>
+
+  const label = active ? 'Pause' : remaining < seconds ? 'Resume' : 'Start'
 
   return (
     <div className="rest-timer">
-      <span className="time">{timeText}</span>
-      <button
-        onClick={() => {
-          setActive(!active)
-          if (!active) setRemaining(seconds)
-        }}
-      >
-        {active ? 'Reset' : 'Start Rest'}
-      </button>
+      <span className="rest-timer-display">{display}</span>
+      <div className="rest-timer-controls">
+        <button className="rest-btn" onClick={toggle}>{label}</button>
+        <button className="rest-btn rest-btn-add" onClick={() => addTime(30)}>+30s</button>
+        <button className="rest-btn rest-btn-reset" onClick={reset}>Reset</button>
+      </div>
     </div>
   )
 }

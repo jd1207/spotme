@@ -1,10 +1,24 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
 import { ChatBubble } from '../components/chat-bubble'
+import { RestTimer } from '../components/rest-timer'
 import { WorkoutHome } from './workout-home'
 import type { Message, SetSuggestion } from '../types'
 
 const REST_DURATION = 120
+
+// fallback: extract set suggestion from claude's text via regex
+function extractSetFromText(text: string): SetSuggestion | undefined {
+  const match = text.match(/(\d+)\s*(?:lbs?)?\s*[x\u00d7]\s*(\d+)/)
+  if (!match) return undefined
+  const exMatch = text.match(/(?:for|on|do)\s+([A-Z][a-z]+(?:\s+[A-Za-z]+){0,3})/i)
+  return {
+    exercise: exMatch ? exMatch[1] : 'Next Set',
+    weight: parseInt(match[1]),
+    reps: parseInt(match[2]),
+    basis: 'Based on your feedback',
+  }
+}
 
 export function Workout() {
   const [activeWorkoutId, setActiveWorkoutId] = useState<number | null>(null)
@@ -12,26 +26,14 @@ export function Workout() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [thinking, setThinking] = useState(false)
-  const [restSeconds, setRestSeconds] = useState(0)
-  const [restActive, setRestActive] = useState(false)
+  const [showRest, setShowRest] = useState(false)
   const messagesRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (messagesRef.current) {
       messagesRef.current.scrollTop = messagesRef.current.scrollHeight
     }
-  }, [messages, thinking])
-
-  useEffect(() => {
-    if (!restActive) return
-    const timer = setInterval(() => {
-      setRestSeconds(s => {
-        if (s <= 1) { setRestActive(false); return 0 }
-        return s - 1
-      })
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [restActive])
+  }, [messages, thinking, showRest])
 
   const startWorkout = async () => {
     try {
@@ -73,18 +75,13 @@ export function Workout() {
     } catch {}
   }
 
-  const startRest = () => {
-    setRestSeconds(REST_DURATION)
-    setRestActive(true)
-  }
-
   const handleSetStart = (suggestion: SetSuggestion) => {
     api.logSet({
       exercise_name: suggestion.exercise,
       weight: suggestion.weight,
       reps: suggestion.reps,
     }).catch(() => {})
-    startRest()
+    setShowRest(true)
   }
 
   const send = async (text: string) => {
@@ -96,16 +93,11 @@ export function Workout() {
       const wid = activeWorkoutId && activeWorkoutId > 0 ? activeWorkoutId : undefined
       const result = await api.chat(text, wid)
       const msg: Message = { role: 'assistant', content: result.response }
-      const match = result.response.match(/(\d+)\s*(?:lbs?)?\s*[x\u00d7]\s*(\d+)/)
-      if (match) {
-        const exMatch = result.response.match(/(?:for|on|do)\s+([A-Z][a-z]+(?:\s+[A-Za-z]+){0,3})/i)
-        msg.setCard = {
-          exercise: exMatch ? exMatch[1] : 'Next Set',
-          weight: parseInt(match[1]),
-          reps: parseInt(match[2]),
-          basis: 'Based on your feedback',
-        }
-      }
+      // prefer structured set_suggestion from api, fall back to regex
+      const structured = result.set_suggestion
+      msg.setCard = structured
+        ? { exercise: structured.exercise, weight: structured.weight, reps: structured.reps, basis: structured.basis || 'Claude suggestion' }
+        : extractSetFromText(result.response)
       setMessages(m => [...m, msg])
     } catch {
       setMessages(m => [...m, { role: 'assistant', content: 'Connection error — try again in a sec.' }])
@@ -123,7 +115,7 @@ export function Workout() {
       <div className="workout-chat-header">
         <button className="end-workout-btn" onClick={endWorkout}>{viewOnly ? 'Back' : activeWorkoutId === -1 ? 'Close' : 'End'}</button>
         <span className="workout-chat-title">{viewOnly ? 'Past Workout' : activeWorkoutId === -1 ? 'Chat' : 'Workout'}</span>
-        {restActive && !viewOnly && <span className="rest-indicator">{Math.floor(restSeconds / 60)}:{(restSeconds % 60).toString().padStart(2, '0')}</span>}
+        {showRest && !viewOnly && <span className="rest-indicator">Resting</span>}
       </div>
       <div className="messages" ref={messagesRef}>
         {messages.length === 0 && (
@@ -136,6 +128,9 @@ export function Workout() {
         {messages.map((m, i) => (
           <ChatBubble key={i} role={m.role} content={m.content} setCard={m.setCard} onSetStart={m.setCard ? () => handleSetStart(m.setCard!) : undefined} />
         ))}
+        {showRest && !viewOnly && (
+          <RestTimer seconds={REST_DURATION} onComplete={() => setShowRest(false)} />
+        )}
         {thinking && (
           <div className="chat-bubble assistant typing">
             <span className="claude-label">CLAUDE</span>

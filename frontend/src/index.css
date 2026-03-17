@@ -1484,20 +1484,46 @@ button {
 .rest-timer {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  margin: 8px 0;
 }
 
-.rest-timer .time {
+.rest-timer-display {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--success);
+  min-width: 60px;
+}
+
+.rest-timer-compact {
+  font-size: 0.85rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--success);
 }
 
-.rest-timer.compact {
-  padding: 0;
+.rest-timer-controls {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
 }
 
-.rest-timer.compact .time {
-  font-size: 0.85rem;
+.rest-btn {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  min-height: 36px;
+  flex: 1;
 }
+
+.rest-btn:active { background: var(--border) !important; }
+.rest-btn-add { flex: 0; min-width: 50px; }
+.rest-btn-reset { color: var(--text-secondary); }
