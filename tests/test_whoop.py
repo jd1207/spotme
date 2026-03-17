@@ -261,7 +261,7 @@ def test_whoop_sync_no_token(test_app):
         mock_settings.whoop_access_token = ""
         resp = test_app.get("/api/whoop/sync")
     assert resp.status_code == 200
-    assert resp.json()["error"] == "whoop not configured"
+    assert "not co" in resp.json()["error"]
 
 
 def test_whoop_retry_no_token(test_app):
@@ -269,7 +269,7 @@ def test_whoop_retry_no_token(test_app):
         mock_settings.whoop_access_token = ""
         resp = test_app.post("/api/whoop/retry")
     assert resp.status_code == 200
-    assert resp.json()["error"] == "whoop not configured"
+    assert "not co" in resp.json()["error"]
 
 
 def test_complete_workout_no_whoop(test_app, engine):

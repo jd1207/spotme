@@ -19,6 +19,8 @@ export const api = {
   getLayout: (screen: string) => request<import('./types').Layout>(`/layout?screen=${screen}`),
   getProgress: () => request<{ bench_1rm_trend: object[]; whoop_trends: object }>('/progress'),
   getProfile: () => request<{ id: number; name: string } | null>('/profile'),
+  whoopStatus: () => request<{ connected: boolean; oauth_available: boolean }>('/whoop/status'),
+  whoopAuthorize: () => request<{ url?: string; error?: string }>('/whoop/authorize'),
   syncWhoop: () => request<{ synced: number }>('/whoop/sync'),
   uploadVideo: async (file: File, exercise: string, weight: number, setNumber: number) => {
     const form = new FormData()

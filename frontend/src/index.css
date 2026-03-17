@@ -1311,6 +1311,28 @@ button {
   color: var(--text-secondary);
 }
 
+.profile-connect-btn {
+  background: var(--accent) !important;
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 10px 24px;
+  border-radius: var(--radius-sm);
+  min-height: 44px;
+  transition: opacity var(--transition);
+}
+
+.profile-connect-btn:active { opacity: 0.85; }
+.profile-connect-btn:disabled { opacity: 0.5; }
+
+.profile-item-value.connected { color: var(--success); }
+
+.profile-item-hint {
+  font-size: 0.75rem;
+  color: var(--text-disabled);
+  line-height: 1.4;
+}
+
 /* ----------------------------------------------------------------
    rest timer
    ---------------------------------------------------------------- */

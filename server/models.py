@@ -95,6 +95,15 @@ class SystemMemory(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+class WhoopToken(Base):
+    __tablename__ = "whoop_tokens"
+    id = Column(Integer, primary_key=True)
+    access_token = Column(Text, nullable=False)
+    refresh_token = Column(Text, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 class WhoopSyncQueue(Base):
     __tablename__ = "whoop_sync_queue"
     id = Column(Integer, primary_key=True)
