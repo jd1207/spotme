@@ -129,7 +129,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     db.add(Conversation(role="user", content=request.message, context_type="chat", workout_id=request.workout_id))
     db.add(Conversation(role="assistant", content=result["response"], context_type="chat", workout_id=request.workout_id))
     db.commit()
-    return ChatResponse(response=result["response"], layout=result["layout"])
+    return ChatResponse(response=result["response"], layout=result.get("layout"), set_suggestion=result.get("set_suggestion"))
 
 
 @router.get("/chat/history/{workout_id}")

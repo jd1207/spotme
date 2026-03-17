@@ -7,6 +7,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     layout: dict | None = None
+    set_suggestion: dict | None = None
 
 class SetLog(BaseModel):
     exercise_name: str

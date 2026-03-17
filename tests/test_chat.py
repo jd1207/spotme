@@ -152,3 +152,35 @@ async def test_chat_extracts_profile():
         result = await service.chat("I'm Jordan", context="test")
         assert result["profile"]["name"] == "Jordan"
         assert result["profile"]["goals"] == "strength"
+
+
+# -- task 7: structured set suggestions from claude --
+
+@pytest.mark.asyncio
+async def test_chat_returns_set_suggestion():
+    with patch("server.services.claude_service._call_claude", new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = '{"response": "Hit 225 for 5 reps", "layout": null, "set_suggestion": {"exercise": "Bench Press", "weight": 225, "reps": 5, "basis": "based on last session"}}'
+        service = ClaudeService()
+        result = await service.chat("what should I do next?", context="test")
+        assert result["set_suggestion"]["exercise"] == "Bench Press"
+        assert result["set_suggestion"]["weight"] == 225
+        assert result["set_suggestion"]["reps"] == 5
+        assert result["set_suggestion"]["basis"] == "based on last session"
+
+
+@pytest.mark.asyncio
+async def test_chat_set_suggestion_null_when_absent():
+    with patch("server.services.claude_service._call_claude", new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = '{"response": "Just chatting", "layout": null}'
+        service = ClaudeService()
+        result = await service.chat("how are you?", context="test")
+        assert result["set_suggestion"] is None
+
+
+@pytest.mark.asyncio
+async def test_chat_set_suggestion_null_on_parse_failure():
+    with patch("server.services.claude_service._call_claude", new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = "plain text, not json"
+        service = ClaudeService()
+        result = await service.chat("hello", context="test")
+        assert result["set_suggestion"] is None

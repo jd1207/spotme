@@ -81,9 +81,14 @@ async def test_sync_biometrics_happy_path(db):
     mock_sleep.performance = 90.0
     mock_sleep.total_in_bed_hours = 7.8
 
+    mock_cycle = MagicMock()
+    mock_cycle.start = "2026-03-16T00:00:00Z"
+    mock_cycle.strain = 12.5
+
     client = AsyncMock()
     client.get_recovery.return_value = [mock_recovery]
     client.get_sleep.return_value = [mock_sleep]
+    client.get_cycles.return_value = [mock_cycle]
 
     result = await sync_whoop_biometrics(db, client)
     assert result["synced"] == 1
@@ -93,6 +98,7 @@ async def test_sync_biometrics_happy_path(db):
     assert whoop.hrv == 72.5
     assert whoop.sleep_score == 90.0
     assert whoop.sleep_duration == 7.8
+    assert whoop.strain == 12.5
 
 
 @pytest.mark.asyncio
@@ -125,6 +131,7 @@ async def test_sync_biometrics_skips_duplicates(db):
     client = AsyncMock()
     client.get_recovery.return_value = [mock_recovery]
     client.get_sleep.return_value = []
+    client.get_cycles.return_value = []
 
     result = await sync_whoop_biometrics(db, client)
     assert result["synced"] == 0
@@ -138,9 +145,10 @@ async def test_sync_biometrics_skips_duplicates(db):
 @pytest.mark.asyncio
 async def test_push_workout_happy_path(seeded_db):
     from server.services.whoop_service import push_workout_to_whoop
+    from whoop import WorkoutResult
 
     client = AsyncMock()
-    client.log_workout.return_value = {"activity_id": 12345, "exercises_linked": True}
+    client.log_workout.return_value = WorkoutResult(activity_id=12345, exercises_linked=True)
 
     workout = seeded_db.query(Workout).first()
     result = await push_workout_to_whoop(seeded_db, client, workout.id)
@@ -200,8 +208,9 @@ async def test_queue_retry_success(seeded_db):
     ))
     seeded_db.commit()
 
+    from whoop import WorkoutResult
     mock_client = AsyncMock()
-    mock_client.log_workout.return_value = {"activity_id": 999}
+    mock_client.log_workout.return_value = WorkoutResult(activity_id=999, exercises_linked=False)
 
     with patch("server.services.whoop_service.create_whoop_client", return_value=mock_client), \
          patch("server.services.whoop_service.settings") as mock_settings:
@@ -323,3 +332,64 @@ def test_create_client_token_only():
         client = create_whoop_client()
     assert client is not None
     assert client._auth is None
+
+
+# -- /api/whoop/latest tests --
+
+def test_whoop_latest_no_data(test_app):
+    resp = test_app.get("/api/whoop/latest")
+    assert resp.status_code == 200
+    assert resp.json()["data"] is None
+
+
+def test_whoop_latest_with_data(test_app, engine):
+    from datetime import date
+    TestSession = sessionmaker(bind=engine)
+    session = TestSession()
+    session.add(WhoopData(
+        date=date.today().isoformat(),
+        recovery_score=85.0, hrv=72.5, resting_hr=50,
+        sleep_score=90.0, sleep_duration=7.8, strain=12.5,
+    ))
+    session.commit()
+    session.close()
+
+    resp = test_app.get("/api/whoop/latest")
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["recovery_score"] == 85.0
+    assert data["strain"] == 12.5
+
+
+# -- test-write endpoint tests --
+
+def test_whoop_test_write_no_write_token(test_app):
+    with patch("server.routes.whoop._get_write_token", return_value=None):
+        resp = test_app.post("/api/whoop/test-write")
+    assert resp.status_code == 200
+    assert resp.json()["success"] is False
+    assert "login" in resp.json()["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_sync_biometrics_cycles_fail_graceful(db):
+    from server.services.whoop_service import sync_whoop_biometrics
+    from whoop import WhoopAPIError
+
+    mock_recovery = MagicMock()
+    mock_recovery.created_at = "2026-03-17T10:00:00Z"
+    mock_recovery.recovery_score = 80.0
+    mock_recovery.hrv = 65.0
+    mock_recovery.resting_hr = 52
+
+    client = AsyncMock()
+    client.get_recovery.return_value = [mock_recovery]
+    client.get_sleep.return_value = []
+    client.get_cycles.side_effect = WhoopAPIError("authorization was not valid", status_code=401)
+
+    result = await sync_whoop_biometrics(db, client)
+    assert result["synced"] == 1
+    assert "strain unavailable" in result["warnings"][0]
+
+    whoop = db.query(WhoopData).filter_by(date="2026-03-17").first()
+    assert whoop.recovery_score == 80.0

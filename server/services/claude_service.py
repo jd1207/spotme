@@ -32,12 +32,15 @@ Always respond with valid JSON:
 {
   "response": "your coaching text",
   "layout": null,
+  "set_suggestion": null,
   "profile": {"name": "...", ...},
   "memory_update": "full updated training memory as markdown"
 }
 ```
 - "response" is required
 - "layout" is optional (UI layout descriptor, usually null)
+- "set_suggestion" is optional — when recommending a specific set, include:
+  {"exercise": "Bench Press", "weight": 225, "reps": 5, "basis": "based on last session + green recovery"}
 - "profile" is optional (only when you learn new profile info)
 - "memory_update" is optional (only when training memory should change)
 
@@ -115,11 +118,11 @@ class ClaudeService:
             raw_text = await _call_claude(system, message)
         except RuntimeError as e:
             logger.error("claude call failed: %s", e)
-            return {"response": "Having trouble reaching Claude right now. Try again in a sec.", "layout": None, "profile": None, "memory_update": None}
+            return {"response": "Having trouble reaching Claude right now. Try again in a sec.", "layout": None, "profile": None, "memory_update": None, "set_suggestion": None}
         try:
             parsed = json.loads(raw_text)
         except json.JSONDecodeError:
-            return {"response": raw_text, "layout": None, "profile": None, "memory_update": None}
+            return {"response": raw_text, "layout": None, "profile": None, "memory_update": None, "set_suggestion": None}
         layout = parsed.get("layout")
         if layout:
             validation = validate_layout(layout)
@@ -129,6 +132,7 @@ class ClaudeService:
             "layout": layout,
             "profile": parsed.get("profile"),
             "memory_update": parsed.get("memory_update"),
+            "set_suggestion": parsed.get("set_suggestion"),
         }
 
     async def analyze_form(self, frames_base64: list, context: str) -> dict:

@@ -36,6 +36,7 @@ async def sync_whoop_biometrics(db: Session, whoop_client):
         return {"error": str(e), "synced": 0}
 
     synced = 0
+    warnings = []
     for r in recoveries:
         date_str = r.created_at[:10]
         existing = db.query(WhoopData).filter_by(date=date_str).first()
@@ -53,8 +54,24 @@ async def sync_whoop_biometrics(db: Session, whoop_client):
         if existing:
             existing.sleep_score = s.performance
             existing.sleep_duration = s.total_in_bed_hours
+
+    # strain from cycles — fetched independently since scope may not be granted
+    try:
+        cycles = await whoop_client.get_cycles()
+        for c in cycles:
+            date_str = c.start[:10]
+            existing = db.query(WhoopData).filter_by(date=date_str).first()
+            if existing:
+                existing.strain = c.strain
+    except WhoopAPIError as e:
+        logger.warning("whoop cycle/strain sync skipped: %s", e)
+        warnings.append(f"strain unavailable: {e}")
+
     db.commit()
-    return {"synced": synced}
+    result = {"synced": synced}
+    if warnings:
+        result["warnings"] = warnings
+    return result
 
 
 async def push_workout_to_whoop(db: Session, whoop_client, workout_id: int):
@@ -92,7 +109,7 @@ async def push_workout_to_whoop(db: Session, whoop_client, workout_id: int):
 
     try:
         result = await whoop_client.log_workout(whoop_workout)
-        return {"synced": True, "activity_id": result["activity_id"]}
+        return {"synced": True, "activity_id": result.activity_id}
     except WhoopAPIError as e:
         _queue_failed_sync(db, workout_id, workout.date, e)
         return {"synced": False, "error": str(e), "queued": True}
