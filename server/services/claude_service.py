@@ -41,10 +41,22 @@ Always respond with valid JSON:
 - "profile" is optional (only when you learn new profile info)
 - "memory_update" is optional (only when training memory should change)
 
-Layout components available: header, stat_card, exercise_card, set_logger, rest_timer, text_block, video_prompt, chart, action_button, chat_bubble."""
+Layout components available: header, stat_card, exercise_card, set_logger, rest_timer, text_block, video_prompt, chart, action_button, chat_bubble.
+
+## Recovery-Based Coaching
+
+When Whoop data is available, adjust your coaching:
+- GREEN (67-100% recovery): train as programmed, push intensity
+- YELLOW (34-66% recovery): reduce RPE by 1, keep volume, monitor fatigue
+- RED (0-33% recovery): suggest deload — reduce weight 10-15%, cut volume 30%, or swap to mobility/recovery work
+
+Always mention the recovery zone when starting a workout. Factor sleep score into recommendations — below 60% sleep suggests shorter session."""
+
+RECOVERY_GREEN = 67
+RECOVERY_YELLOW = 34
 
 
-def assemble_context(program, workout, whoop, history, profile=None, memory=None, active_workout=None):
+def assemble_context(program, workout, whoop, history, profile=None, memory=None, active_workout=None, set_history=None):
     parts = []
     if profile:
         profile_parts = [f"User: {profile.get('name', 'unknown')}"]
@@ -71,11 +83,23 @@ def assemble_context(program, workout, whoop, history, profile=None, memory=None
         parts.append(f"\n{active_workout}")
 
     if whoop:
-        parts.append(f"Whoop: Recovery {whoop.get('recovery_score', 'N/A')}% | HRV {whoop.get('hrv', 'N/A')} | Sleep {whoop.get('sleep_score', 'N/A')}%")
+        recovery = whoop.get('recovery_score')
+        zone = "GREEN" if recovery and recovery >= RECOVERY_GREEN else "YELLOW" if recovery and recovery >= RECOVERY_YELLOW else "RED"
+        strain_str = f" | Strain {whoop['strain']}" if whoop.get('strain') else ""
+        sleep_dur = whoop.get('sleep_duration')
+        sleep_hrs = f" ({sleep_dur:.1f}h)" if isinstance(sleep_dur, (int, float)) else ""
+        sleep_str = f" | Sleep {whoop.get('sleep_score', 'N/A')}%{sleep_hrs}" if whoop.get('sleep_score') else ""
+        parts.append(f"Whoop [{zone}]: Recovery {recovery or 'N/A'}% | HRV {whoop.get('hrv', 'N/A')}{sleep_str}{strain_str} | RHR {whoop.get('resting_hr', 'N/A')}")
+
+    if set_history:
+        parts.append("Recent sets (last 3 workouts):")
+        for entry in set_history[:15]:
+            rpe_str = f" @ RPE {entry['rpe']}" if entry.get('rpe') else ""
+            parts.append(f"  {entry['date']} {entry['exercise']}: {entry['weight']}lbs x {entry['reps']}{rpe_str}")
 
     if history:
         parts.append("Recent messages:")
-        for msg in history[-5:]:
+        for msg in history[-10:]:
             parts.append(f"  {msg['role']}: {msg['content'][:200]}")
 
     return "\n".join(parts)

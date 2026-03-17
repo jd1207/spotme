@@ -16,6 +16,7 @@ export interface Layout {
 export interface ChatResponse {
   response: string
   layout: Layout | null
+  set_suggestion?: SetSuggestion | null
 }
 
 export interface SetLog {
@@ -46,12 +47,22 @@ export interface SetSuggestion {
   weight: number
   reps: number
   basis?: string
+  lastSet?: { weight: number; reps: number; rpe: number | null }
 }
 
 export interface Message {
   role: 'user' | 'assistant'
   content: string
   setCard?: SetSuggestion
+}
+
+export interface WhoopStats {
+  recovery_score: number | null
+  hrv: number | null
+  resting_hr: number | null
+  sleep_score: number | null
+  sleep_duration: number | null
+  strain: number | null
 }
 
 export interface SessionData {
@@ -70,4 +81,19 @@ export interface WeekData {
   sessions: SessionData[]
   completed: number
   total: number
+}
+
+export interface TrendPoint {
+  date: string
+  [key: string]: unknown
+}
+
+export interface ProgressData {
+  e1rm_trend: TrendPoint[]
+  volume_trend: TrendPoint[]
+  whoop: {
+    recovery: TrendPoint[]
+    hrv: TrendPoint[]
+    strain: TrendPoint[]
+  }
 }

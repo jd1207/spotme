@@ -15,6 +15,38 @@ router = APIRouter()
 MEMORY_KEY = "training_plan"
 
 
+def _get_today_whoop(db: Session) -> dict | None:
+    """return today's whoop data as a dict, or None"""
+    whoop = db.query(WhoopData).filter_by(date=date.today().isoformat()).first()
+    if not whoop:
+        return None
+    return {
+        "recovery_score": whoop.recovery_score,
+        "hrv": whoop.hrv,
+        "resting_hr": whoop.resting_hr,
+        "sleep_score": whoop.sleep_score,
+        "sleep_duration": whoop.sleep_duration,
+        "strain": whoop.strain,
+    }
+
+
+def _get_recent_sets(db: Session) -> list[dict]:
+    """return last 15 completed sets across recent workouts"""
+    rows = (
+        db.query(Set, Exercise, Workout)
+        .join(Exercise, Set.exercise_id == Exercise.id)
+        .join(Workout, Exercise.workout_id == Workout.id)
+        .filter(Set.completed == True)
+        .order_by(Workout.date.desc(), Exercise.order, Set.id)
+        .limit(15)
+        .all()
+    )
+    return [
+        {"date": w.date, "exercise": ex.name, "weight": s.weight, "reps": s.reps, "rpe": s.rpe}
+        for s, ex, w in rows
+    ]
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     # profile
@@ -30,9 +62,11 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             "injuries_notes": profile.injuries_notes,
         }
 
-    # whoop
-    whoop = db.query(WhoopData).order_by(WhoopData.date.desc()).first()
-    whoop_dict = {"recovery_score": whoop.recovery_score, "hrv": whoop.hrv, "sleep_score": whoop.sleep_score} if whoop else None
+    # whoop — today only
+    whoop_dict = _get_today_whoop(db)
+
+    # recent set history for context
+    set_history = _get_recent_sets(db)
 
     # conversation history scoped to this workout (or general if no workout_id)
     history_query = db.query(Conversation).order_by(Conversation.created_at.desc())
@@ -61,7 +95,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     memory_row = db.query(SystemMemory).filter_by(key=MEMORY_KEY).first()
     memory_text = memory_row.content if memory_row else None
 
-    context = assemble_context(None, None, whoop_dict, history_dicts, profile_dict, memory_text, workout_context)
+    context = assemble_context(None, None, whoop_dict, history_dicts, profile_dict, memory_text, workout_context, set_history=set_history)
     service = ClaudeService()
     result = await service.chat(request.message, context)
 

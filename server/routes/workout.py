@@ -40,29 +40,54 @@ async def get_next_workout(db: Session = Depends(get_db)):
     from server.models import SystemMemory
     memory = db.query(SystemMemory).filter_by(key="training_plan").first()
     if not memory or not memory.content:
-        return {"summary": "No program loaded yet. Chat with Claude to set one up."}
-    # figure out what day it is and match to schedule
+        return {"summary": "No program loaded. Tell Claude about your training plan in Chat."}
+
     today = date.today()
-    day_name = today.strftime("%A")
-    # scan memory for today's day name or next scheduled session
+    day_name = today.strftime("%A")    # "Monday"
+    day_abbrev = today.strftime("%a")  # "Mon"
+
     lines = memory.content.split("\n")
     for line in lines:
-        if day_name.lower() in line.lower() and any(w in line.lower() for w in ["bench", "leg", "pull", "push", "upper", "lower", "back", "arms", "shoulder", "squat", "deadlift", "press"]):
-            # clean up the line
-            summary = line.strip().strip("|").strip("- ").strip()
-            if len(summary) > 10:
-                return {"summary": f"{day_name}: {summary}"}
-    # fallback: return the first few schedule-related lines
-    schedule_lines = [l.strip() for l in lines if any(w in l.lower() for w in ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "week"]) and len(l.strip()) > 5]
-    if schedule_lines:
-        return {"summary": schedule_lines[0]}
-    return {"summary": "Check your program in Chat with Claude."}
+        lower = line.lower().strip()
+        if not lower or lower.startswith("#"):
+            continue
+        if day_name.lower() in lower or day_abbrev.lower() in lower:
+            clean = line.strip().strip("-*|").strip()
+            if len(clean) > 10:
+                return {"summary": clean}
+
+    # fallback: match "Day N" based on weekday number (Mon=1, Tue=2, etc.)
+    weekday_num = today.weekday()  # 0=Mon
+    for line in lines:
+        lower = line.lower().strip()
+        if f"day {weekday_num + 1}" in lower and len(line.strip()) > 10:
+            return {"summary": line.strip().strip("-*|").strip()}
+
+    return {"summary": f"No {day_name} workout found in plan. Chat with Claude to update your program."}
 
 
 @router.get("/workout/recent")
 async def get_recent_workouts(db: Session = Depends(get_db)):
     workouts = db.query(Workout).order_by(Workout.date.desc()).limit(20).all()
-    return [{"id": w.id, "date": w.date, "type": w.type, "status": w.status, "duration": w.duration} for w in workouts]
+    result = []
+    for w in workouts:
+        exercises = db.query(Exercise).filter_by(workout_id=w.id).order_by(Exercise.order).all()
+        whoop = db.query(WhoopData).filter_by(date=w.date).first()
+        exercise_list = []
+        for ex in exercises:
+            sets = db.query(Set).filter_by(exercise_id=ex.id, completed=True).all()
+            if sets:
+                exercise_list.append({
+                    "name": ex.name,
+                    "sets": [{"weight": s.weight, "reps": s.reps, "rpe": s.rpe} for s in sets],
+                })
+        result.append({
+            "id": w.id, "date": w.date, "type": w.type,
+            "status": w.status, "duration": w.duration,
+            "exercises": exercise_list,
+            "recovery": whoop.recovery_score if whoop else None,
+        })
+    return result
 
 
 @router.get("/workout/today")
@@ -77,7 +102,7 @@ async def get_today_workout(db: Session = Depends(get_db)):
     for ex in exercises:
         sets = db.query(Set).filter_by(exercise_id=ex.id).all()
         exercise_data.append({"id": ex.id, "name": ex.name, "order": ex.order, "sets": [{"id": s.id, "weight": s.weight, "reps": s.reps, "rpe": s.rpe, "completed": s.completed} for s in sets]})
-    whoop = db.query(WhoopData).order_by(WhoopData.date.desc()).first()
+    whoop = db.query(WhoopData).filter_by(date=today).first()
     return {"id": workout.id, "date": workout.date, "status": workout.status, "exercises": exercise_data, "whoop_recovery": whoop.recovery_score if whoop else None}
 
 
@@ -95,6 +120,26 @@ async def log_set(set_log: SetLog, db: Session = Depends(get_db)):
     db.add(new_set)
     db.commit()
     return {"id": new_set.id, "logged": True}
+
+
+@router.get("/exercise/last/{name}")
+async def get_last_exercise(name: str, db: Session = Depends(get_db)):
+    """get the most recent completed sets for an exercise"""
+    sets = (
+        db.query(Set.weight, Set.reps, Set.rpe, Workout.date)
+        .join(Exercise, Set.exercise_id == Exercise.id)
+        .join(Workout, Exercise.workout_id == Workout.id)
+        .filter(Exercise.name == name, Set.completed == True)
+        .order_by(Workout.date.desc())
+        .limit(5)
+        .all()
+    )
+    return {
+        "sets": [
+            {"weight": s.weight, "reps": s.reps, "rpe": s.rpe, "date": s.date}
+            for s in sets
+        ]
+    }
 
 
 @router.post("/workout/complete", response_model=WorkoutCompleteResponse)

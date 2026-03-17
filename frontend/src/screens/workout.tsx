@@ -1,9 +1,24 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
 import { ChatBubble } from '../components/chat-bubble'
+import { RestTimer } from '../components/rest-timer'
+import { WorkoutHome } from './workout-home'
 import type { Message, SetSuggestion } from '../types'
 
 const REST_DURATION = 120
+
+// fallback: extract set suggestion from claude's text via regex
+function extractSetFromText(text: string): SetSuggestion | undefined {
+  const match = text.match(/(\d+)\s*(?:lbs?)?\s*[x\u00d7]\s*(\d+)/)
+  if (!match) return undefined
+  const exMatch = text.match(/(?:for|on|do)\s+([A-Z][a-z]+(?:\s+[A-Za-z]+){0,3})/i)
+  return {
+    exercise: exMatch ? exMatch[1] : 'Next Set',
+    weight: parseInt(match[1]),
+    reps: parseInt(match[2]),
+    basis: 'Based on your feedback',
+  }
+}
 
 export function Workout() {
   const [activeWorkoutId, setActiveWorkoutId] = useState<number | null>(null)
@@ -11,33 +26,14 @@ export function Workout() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [thinking, setThinking] = useState(false)
-  const [restSeconds, setRestSeconds] = useState(0)
-  const [restActive, setRestActive] = useState(false)
-  const [recentWorkouts, setRecentWorkouts] = useState<Array<{ id: number; date: string; type: string; status: string }>>([])
-  const [nextWorkout, setNextWorkout] = useState<string | null>(null)
+  const [showRest, setShowRest] = useState(false)
   const messagesRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    api.getRecentWorkouts().then(setRecentWorkouts).catch(() => {})
-    api.getNextWorkout().then(r => setNextWorkout(r.summary)).catch(() => {})
-  }, [])
 
   useEffect(() => {
     if (messagesRef.current) {
       messagesRef.current.scrollTop = messagesRef.current.scrollHeight
     }
-  }, [messages, thinking])
-
-  useEffect(() => {
-    if (!restActive) return
-    const timer = setInterval(() => {
-      setRestSeconds(s => {
-        if (s <= 1) { setRestActive(false); return 0 }
-        return s - 1
-      })
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [restActive])
+  }, [messages, thinking, showRest])
 
   const startWorkout = async () => {
     try {
@@ -68,7 +64,6 @@ export function Workout() {
     setActiveWorkoutId(null)
     setViewOnly(false)
     setMessages([])
-    api.getRecentWorkouts().then(setRecentWorkouts).catch(() => {})
   }
 
   const viewPastWorkout = async (workoutId: number) => {
@@ -80,18 +75,13 @@ export function Workout() {
     } catch {}
   }
 
-  const startRest = () => {
-    setRestSeconds(REST_DURATION)
-    setRestActive(true)
-  }
-
   const handleSetStart = (suggestion: SetSuggestion) => {
     api.logSet({
       exercise_name: suggestion.exercise,
       weight: suggestion.weight,
       reps: suggestion.reps,
     }).catch(() => {})
-    startRest()
+    setShowRest(true)
   }
 
   const send = async (text: string) => {
@@ -103,17 +93,19 @@ export function Workout() {
       const wid = activeWorkoutId && activeWorkoutId > 0 ? activeWorkoutId : undefined
       const result = await api.chat(text, wid)
       const msg: Message = { role: 'assistant', content: result.response }
-      // extract set suggestions from Claude's response (e.g., "try 235 x 5")
-      const match = result.response.match(/(\d+)\s*(?:lbs?)?\s*[x\u00d7]\s*(\d+)/)
-      if (match) {
-        // try to extract exercise name from response context
-        const exMatch = result.response.match(/(?:for|on|do)\s+([A-Z][a-z]+(?:\s+[A-Za-z]+){0,3})/i)
-        msg.setCard = {
-          exercise: exMatch ? exMatch[1] : 'Next Set',
-          weight: parseInt(match[1]),
-          reps: parseInt(match[2]),
-          basis: 'Based on your feedback',
-        }
+      // prefer structured set_suggestion from api, fall back to regex
+      const structured = result.set_suggestion
+      msg.setCard = structured
+        ? { exercise: structured.exercise, weight: structured.weight, reps: structured.reps, basis: structured.basis || 'Claude suggestion' }
+        : extractSetFromText(result.response)
+      // fetch previous performance for this exercise
+      if (msg.setCard) {
+        try {
+          const lastData = await api.getLastExercise(msg.setCard.exercise)
+          if (lastData.sets.length > 0) {
+            msg.setCard.lastSet = lastData.sets[0]
+          }
+        } catch { /* ignore — last set is a nice-to-have */ }
       }
       setMessages(m => [...m, msg])
     } catch {
@@ -123,48 +115,16 @@ export function Workout() {
     }
   }
 
-  // home screen — no active workout
   if (!activeWorkoutId) {
-    return (
-      <div className="workout-home">
-        <div className="workout-home-header">
-          <h2>Ready to train?</h2>
-          <p>Start a workout or chat with Claude about your program.</p>
-        </div>
-        {nextWorkout && (
-          <div className="next-workout-card">
-            <span className="next-label">UP NEXT</span>
-            <p className="next-summary">{nextWorkout}</p>
-          </div>
-        )}
-        <div className="home-actions">
-          <button className="start-workout-btn" onClick={startWorkout}>Start Workout</button>
-          <button className="general-chat-btn" onClick={startGeneralChat}>Chat with Claude</button>
-        </div>
-
-        {recentWorkouts.length > 0 && (
-          <div className="recent-workouts">
-            <h3 className="recent-title">Recent Sessions</h3>
-            {recentWorkouts.map(w => (
-              <button key={w.id} className={`recent-workout-card ${w.status}`} onClick={() => viewPastWorkout(w.id)}>
-                <span className="recent-date">{w.date}</span>
-                <span className="recent-type">{w.type}</span>
-                <span className="recent-status">{w.status === 'active' ? 'In Progress' : 'Completed'}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    )
+    return <WorkoutHome onStartWorkout={startWorkout} onStartChat={startGeneralChat} onViewPast={viewPastWorkout} />
   }
 
-  // active workout — chat
   return (
     <div className="coach-screen">
       <div className="workout-chat-header">
         <button className="end-workout-btn" onClick={endWorkout}>{viewOnly ? 'Back' : activeWorkoutId === -1 ? 'Close' : 'End'}</button>
         <span className="workout-chat-title">{viewOnly ? 'Past Workout' : activeWorkoutId === -1 ? 'Chat' : 'Workout'}</span>
-        {restActive && !viewOnly && <span className="rest-indicator">{Math.floor(restSeconds / 60)}:{(restSeconds % 60).toString().padStart(2, '0')}</span>}
+        {showRest && !viewOnly && <span className="rest-indicator">Resting</span>}
       </div>
       <div className="messages" ref={messagesRef}>
         {messages.length === 0 && (
@@ -177,6 +137,9 @@ export function Workout() {
         {messages.map((m, i) => (
           <ChatBubble key={i} role={m.role} content={m.content} setCard={m.setCard} onSetStart={m.setCard ? () => handleSetStart(m.setCard!) : undefined} />
         ))}
+        {showRest && !viewOnly && (
+          <RestTimer seconds={REST_DURATION} onComplete={() => setShowRest(false)} />
+        )}
         {thinking && (
           <div className="chat-bubble assistant typing">
             <span className="claude-label">CLAUDE</span>
