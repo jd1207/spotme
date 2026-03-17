@@ -484,6 +484,41 @@ button {
   line-height: 1.5;
 }
 
+.next-workout-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  width: 100%;
+  max-width: 300px;
+  margin-bottom: 20px;
+}
+
+.next-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.next-summary {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.home-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 300px;
+  margin-bottom: 32px;
+}
+
 .start-workout-btn {
   background: var(--accent) !important;
   color: #fff;
@@ -492,7 +527,6 @@ button {
   padding: 16px 48px;
   border-radius: var(--radius-full);
   min-height: 56px;
-  margin-bottom: 32px;
   transition: opacity var(--transition), transform var(--transition);
 }
 
@@ -500,6 +534,20 @@ button {
   opacity: 0.85;
   transform: scale(0.97);
 }
+
+.general-chat-btn {
+  background: var(--surface-1) !important;
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 14px 48px;
+  border-radius: var(--radius-full);
+  min-height: 48px;
+  transition: opacity var(--transition);
+}
+
+.general-chat-btn:active { opacity: 0.85; }
 
 .recent-workouts {
   width: 100%;
@@ -800,6 +848,34 @@ button {
   background: var(--surface-1);
   color: var(--text-primary);
   border-radius: 4px 16px 16px 16px;
+}
+
+.chat-content {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+.chat-content strong {
+  font-weight: 600;
+  color: white;
+}
+
+.chat-list-item {
+  padding-left: 12px;
+  position: relative;
+}
+
+.chat-list-item::before {
+  content: '\2022';
+  position: absolute;
+  left: 0;
+  color: var(--text-disabled);
+}
+
+.session-check {
+  color: var(--success);
+  font-size: 1rem;
+  flex-shrink: 0;
 }
 
 .claude-label {

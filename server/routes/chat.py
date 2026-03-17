@@ -133,14 +133,13 @@ async def intake(data: dict, db: Session = Depends(get_db)):
         })
         result = await service.chat(prompt, context)
 
-        # save memory
-        memory_update = result.get("memory_update")
-        if memory_update:
-            memory_row = db.query(SystemMemory).filter_by(key=MEMORY_KEY).first()
-            if memory_row:
-                memory_row.content = memory_update
-            else:
-                db.add(SystemMemory(key=MEMORY_KEY, content=memory_update))
+        # save memory — use Claude's structured update if available, fall back to raw plan
+        memory_update = result.get("memory_update") or plan_text
+        memory_row = db.query(SystemMemory).filter_by(key=MEMORY_KEY).first()
+        if memory_row:
+            memory_row.content = memory_update
+        else:
+            db.add(SystemMemory(key=MEMORY_KEY, content=memory_update))
 
         db.add(Conversation(role="user", content=prompt, context_type="intake"))
         db.add(Conversation(role="assistant", content=result["response"], context_type="intake"))

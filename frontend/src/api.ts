@@ -12,6 +12,7 @@ export const api = {
   getRecentWorkouts: () => request<Array<{ id: number; date: string; type: string; status: string; duration: number | null }>>('/workout/recent'),
   getChatHistory: (workoutId: number) => request<Array<{ role: string; content: string; created_at: string }>>(`/chat/history/${workoutId}`),
   intake: (data: Record<string, string>) => request<{ status: string; response: string | null }>('/intake', { method: 'POST', body: JSON.stringify(data) }),
+  getNextWorkout: () => request<{ summary: string }>('/workout/next'),
   getTodayWorkout: () => request<import('./types').WorkoutData>('/workout/today'),
   logSet: (set: import('./types').SetLog) => request<{ id: number; logged: boolean }>('/workout/set', { method: 'POST', body: JSON.stringify(set) }),
   completeWorkout: (workoutId: number) => request<{ status: string; whoop_synced: boolean }>('/workout/complete', { method: 'POST', body: JSON.stringify({ workout_id: workoutId }) }),

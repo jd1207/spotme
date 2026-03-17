@@ -114,16 +114,21 @@ class ClaudeService:
         return {"analysis": raw_text}
 
 
-def _strip_code_fences(text: str) -> str:
-    # strip markdown code block wrappers (```json ... ``` or ``` ... ```)
+def _extract_json(text: str) -> str:
+    import re
     stripped = text.strip()
-    if stripped.startswith("```"):
-        first_newline = stripped.find("\n")
-        if first_newline != -1:
-            stripped = stripped[first_newline + 1:]
-        if stripped.endswith("```"):
-            stripped = stripped[:-3]
-    return stripped.strip()
+    # if the whole thing is valid json, return as-is
+    if stripped.startswith("{"):
+        return stripped
+    # extract json from code fences: ```json { ... } ```
+    fence_match = re.search(r"```(?:json)?\s*\n?(\{.*?\})\s*\n?```", stripped, re.DOTALL)
+    if fence_match:
+        return fence_match.group(1).strip()
+    # find the first { ... } block (greedy, outermost braces)
+    brace_match = re.search(r"\{.*\}", stripped, re.DOTALL)
+    if brace_match:
+        return brace_match.group(0)
+    return stripped
 
 
 async def _call_claude(system: str, message: str) -> str:
@@ -145,4 +150,4 @@ async def _call_claude(system: str, message: str) -> str:
         logger.error("claude cli error: %s", error)
         raise RuntimeError(f"claude cli failed: {error}")
     raw = stdout.decode().strip()
-    return _strip_code_fences(raw)
+    return _extract_json(raw)

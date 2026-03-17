@@ -14,10 +14,12 @@ export function Workout() {
   const [restSeconds, setRestSeconds] = useState(0)
   const [restActive, setRestActive] = useState(false)
   const [recentWorkouts, setRecentWorkouts] = useState<Array<{ id: number; date: string; type: string; status: string }>>([])
+  const [nextWorkout, setNextWorkout] = useState<string | null>(null)
   const messagesRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     api.getRecentWorkouts().then(setRecentWorkouts).catch(() => {})
+    api.getNextWorkout().then(r => setNextWorkout(r.summary)).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -51,8 +53,14 @@ export function Workout() {
     }
   }
 
+  const startGeneralChat = () => {
+    setActiveWorkoutId(-1)
+    setViewOnly(false)
+    setMessages([])
+  }
+
   const endWorkout = async () => {
-    if (activeWorkoutId && !viewOnly) {
+    if (activeWorkoutId && activeWorkoutId > 0 && !viewOnly) {
       try {
         await api.completeWorkout(activeWorkoutId)
       } catch {}
@@ -92,7 +100,8 @@ export function Workout() {
     setInput('')
     setThinking(true)
     try {
-      const result = await api.chat(text, activeWorkoutId ?? undefined)
+      const wid = activeWorkoutId && activeWorkoutId > 0 ? activeWorkoutId : undefined
+      const result = await api.chat(text, wid)
       const msg: Message = { role: 'assistant', content: result.response }
       // extract set suggestions from Claude's response (e.g., "try 235 x 5")
       const match = result.response.match(/(\d+)\s*(?:lbs?)?\s*[x\u00d7]\s*(\d+)/)
@@ -120,9 +129,18 @@ export function Workout() {
       <div className="workout-home">
         <div className="workout-home-header">
           <h2>Ready to train?</h2>
-          <p>Start a workout session to chat with Claude about today's training.</p>
+          <p>Start a workout or chat with Claude about your program.</p>
         </div>
-        <button className="start-workout-btn" onClick={startWorkout}>Start Workout</button>
+        {nextWorkout && (
+          <div className="next-workout-card">
+            <span className="next-label">UP NEXT</span>
+            <p className="next-summary">{nextWorkout}</p>
+          </div>
+        )}
+        <div className="home-actions">
+          <button className="start-workout-btn" onClick={startWorkout}>Start Workout</button>
+          <button className="general-chat-btn" onClick={startGeneralChat}>Chat with Claude</button>
+        </div>
 
         {recentWorkouts.length > 0 && (
           <div className="recent-workouts">
@@ -144,8 +162,8 @@ export function Workout() {
   return (
     <div className="coach-screen">
       <div className="workout-chat-header">
-        <button className="end-workout-btn" onClick={endWorkout}>{viewOnly ? 'Back' : 'End'}</button>
-        <span className="workout-chat-title">{viewOnly ? 'Past Workout' : 'Workout'}</span>
+        <button className="end-workout-btn" onClick={endWorkout}>{viewOnly ? 'Back' : activeWorkoutId === -1 ? 'Close' : 'End'}</button>
+        <span className="workout-chat-title">{viewOnly ? 'Past Workout' : activeWorkoutId === -1 ? 'Chat' : 'Workout'}</span>
         {restActive && !viewOnly && <span className="rest-indicator">{Math.floor(restSeconds / 60)}:{(restSeconds % 60).toString().padStart(2, '0')}</span>}
       </div>
       <div className="messages" ref={messagesRef}>
