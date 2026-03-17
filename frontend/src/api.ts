@@ -21,6 +21,7 @@ export const api = {
   getProfile: () => request<{ id: number; name: string } | null>('/profile'),
   whoopStatus: () => request<{ connected: boolean; oauth_available: boolean }>('/whoop/status'),
   whoopAuthorize: () => request<{ url?: string; error?: string }>('/whoop/authorize'),
+  whoopLogin: (email: string, password: string) => request<{ connected: boolean; error?: string }>('/whoop/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   syncWhoop: () => request<{ synced: number }>('/whoop/sync'),
   uploadVideo: async (file: File, exercise: string, weight: number, setNumber: number) => {
     const form = new FormData()

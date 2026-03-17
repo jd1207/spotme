@@ -7,37 +7,37 @@ interface ProfileProps {
 
 export function Profile({ onReplayTutorial }: ProfileProps) {
   const [whoopConnected, setWhoopConnected] = useState<boolean | null>(null)
-  const [oauthAvailable, setOauthAvailable] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState('')
-  const [connecting, setConnecting] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loggingIn, setLoggingIn] = useState(false)
+  const [loginError, setLoginError] = useState('')
+  const [showLogin, setShowLogin] = useState(false)
 
   useEffect(() => {
-    // check connection on url params (after OAuth redirect)
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('whoop') === 'connected') {
-      setWhoopConnected(true)
-      setSyncResult('Whoop connected!')
-      window.history.replaceState({}, '', '/')
-    }
     api.whoopStatus()
-      .then(s => { setWhoopConnected(s.connected); setOauthAvailable(s.oauth_available) })
+      .then(s => setWhoopConnected(s.connected))
       .catch(() => {})
   }, [])
 
-  const connectWhoop = async () => {
-    setConnecting(true)
+  const handleLogin = async () => {
+    if (!email.trim() || !password.trim()) return
+    setLoggingIn(true)
+    setLoginError('')
     try {
-      const result = await api.whoopAuthorize()
-      if (result.url) {
-        window.location.href = result.url
+      const result = await api.whoopLogin(email, password)
+      if (result.connected) {
+        setWhoopConnected(true)
+        setShowLogin(false)
+        setSyncResult('Whoop connected!')
       } else {
-        setSyncResult(result.error || 'Could not start Whoop connection')
-        setConnecting(false)
+        setLoginError(result.error || 'Login failed')
       }
     } catch {
-      setSyncResult('Connection failed')
-      setConnecting(false)
+      setLoginError('Connection failed')
+    } finally {
+      setLoggingIn(false)
     }
   }
 
@@ -70,24 +70,52 @@ export function Profile({ onReplayTutorial }: ProfileProps) {
             {whoopConnected === null ? 'Checking...' : whoopConnected ? 'Connected' : 'Not connected'}
           </span>
         </div>
-        {!whoopConnected && oauthAvailable && (
+
+        {!whoopConnected && !showLogin && whoopConnected !== null && (
           <div className="profile-item">
-            <button className="profile-connect-btn" onClick={connectWhoop} disabled={connecting}>
-              {connecting ? 'Redirecting...' : 'Connect Whoop'}
+            <button className="profile-connect-btn" onClick={() => setShowLogin(true)}>
+              Connect Whoop
             </button>
           </div>
         )}
-        {!whoopConnected && !oauthAvailable && whoopConnected !== null && (
-          <div className="profile-item">
-            <span className="profile-item-hint">Add WHOOP_CLIENT_ID and WHOOP_CLIENT_SECRET to .env to enable</span>
+
+        {showLogin && !whoopConnected && (
+          <div className="whoop-login-form">
+            <input
+              className="whoop-input"
+              type="email"
+              placeholder="Whoop email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              autoComplete="email"
+            />
+            <input
+              className="whoop-input"
+              type="password"
+              placeholder="Whoop password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleLogin()}
+              autoComplete="current-password"
+            />
+            {loginError && <span className="whoop-login-error">{loginError}</span>}
+            <button className="profile-connect-btn" onClick={handleLogin} disabled={loggingIn}>
+              {loggingIn ? 'Connecting...' : 'Log In'}
+            </button>
           </div>
         )}
+
         {whoopConnected && (
           <div className="profile-item">
             <button className="profile-sync-btn" onClick={handleSync} disabled={syncing}>
               {syncing ? 'Syncing...' : 'Sync Now'}
             </button>
             {syncResult && <span className="profile-sync-result">{syncResult}</span>}
+          </div>
+        )}
+        {!whoopConnected && syncResult && (
+          <div className="profile-item">
+            <span className="profile-sync-result">{syncResult}</span>
           </div>
         )}
       </div>

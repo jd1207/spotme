@@ -1327,6 +1327,31 @@ button {
 
 .profile-item-value.connected { color: var(--success); }
 
+.whoop-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 0;
+}
+
+.whoop-input {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  outline: none;
+  min-height: 44px;
+}
+
+.whoop-input:focus { border-color: var(--accent); }
+
+.whoop-login-error {
+  font-size: 0.8rem;
+  color: #e57373;
+}
+
 .profile-item-hint {
   font-size: 0.75rem;
   color: var(--text-disabled);

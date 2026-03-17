@@ -86,6 +86,33 @@ async def whoop_callback(code: str, state: str, db: Session = Depends(get_db)):
         return RedirectResponse(f"/?whoop=error&reason={str(e)[:50]}")
 
 
+@router.post("/whoop/login")
+async def whoop_login(data: dict, db: Session = Depends(get_db)):
+    email = data.get("email", "")
+    password = data.get("password", "")
+    if not email or not password:
+        return {"connected": False, "error": "email and password required"}
+    try:
+        from whoop.auth import WhoopAuth
+        auth = WhoopAuth()
+        await auth.login_password(email, password)
+        token_row = _get_token(db)
+        if token_row:
+            token_row.access_token = auth.access_token
+            token_row.refresh_token = auth.refresh_token
+        else:
+            db.add(WhoopToken(
+                access_token=auth.access_token,
+                refresh_token=auth.refresh_token,
+            ))
+        db.commit()
+        return {"connected": True}
+    except ImportError:
+        return {"connected": False, "error": "whoop-write-api not installed"}
+    except Exception as e:
+        return {"connected": False, "error": str(e)}
+
+
 @router.get("/whoop/sync")
 async def sync_whoop(db: Session = Depends(get_db)):
     access_token = _get_access_token(db)
