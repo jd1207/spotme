@@ -5,7 +5,7 @@ interface BottomNavProps {
 
 const tabs = [
   { id: 'workout', label: 'Workout', icon: '\u2687' },
-  { id: 'history', label: 'History', icon: '\u2630' },
+  { id: 'program', label: 'Program', icon: '\u2630' },
   { id: 'profile', label: 'Profile', icon: '\u2699' },
 ]
 

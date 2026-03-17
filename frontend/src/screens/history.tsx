@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react'
 import { api } from '../api'
 import { WorkoutDetail } from '../components/workout-detail'
 import { PrsTab } from '../components/prs-tab'
+import { ProgramView } from '../components/program-view'
 import { Progress } from './progress'
 
 interface HistoryProps {
   onNavigateWorkout?: () => void
 }
 
-type Segment = 'workouts' | 'prs' | 'progress'
+type Segment = 'program' | 'log' | 'progress'
 
 interface WorkoutExercise {
   name: string
@@ -26,34 +27,38 @@ interface WorkoutEntry {
 }
 
 export function History({ onNavigateWorkout }: HistoryProps) {
-  const [activeSegment, setActiveSegment] = useState<Segment>('workouts')
+  const [activeSegment, setActiveSegment] = useState<Segment>('program')
   const [workouts, setWorkouts] = useState<WorkoutEntry[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
+    if (activeSegment !== 'log') return
+    setLoading(true)
     api.getRecentWorkouts()
       .then(setWorkouts)
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [activeSegment])
 
   const today = new Date().toISOString().split('T')[0]
 
   return (
     <div className="history-screen">
       <div className="segmented-control">
-        {(['workouts', 'prs', 'progress'] as Segment[]).map(seg => (
+        {(['program', 'log', 'progress'] as Segment[]).map(seg => (
           <button
             key={seg}
             className={`segment${activeSegment === seg ? ' active' : ''}`}
             onClick={() => setActiveSegment(seg)}
           >
-            {seg === 'prs' ? 'PRs' : seg === 'progress' ? 'Progress' : 'Workouts'}
+            {seg === 'log' ? 'Log' : seg === 'progress' ? 'Progress' : 'Program'}
           </button>
         ))}
       </div>
 
-      {activeSegment === 'workouts' && (
+      {activeSegment === 'program' && <ProgramView />}
+
+      {activeSegment === 'log' && (
         <div className="workouts-list">
           {loading && <p className="placeholder-text">Loading...</p>}
           {!loading && workouts.length === 0 && (
@@ -76,9 +81,13 @@ export function History({ onNavigateWorkout }: HistoryProps) {
         </div>
       )}
 
-      {activeSegment === 'prs' && <PrsTab />}
-
-      {activeSegment === 'progress' && <Progress />}
+      {activeSegment === 'progress' && (
+        <>
+          <Progress />
+          <div className="progress-prs-divider" />
+          <PrsTab />
+        </>
+      )}
     </div>
   )
 }

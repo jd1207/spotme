@@ -1661,3 +1661,59 @@ button {
   color: var(--text-secondary);
   margin-top: 4px;
 }
+
+/* ----------------------------------------------------------------
+   program view
+   ---------------------------------------------------------------- */
+
+.program-view { padding: 4px 0; }
+.program-stats {
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.program-section {
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.program-section-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+}
+.program-week-header {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin: 10px 0 6px;
+}
+.program-item {
+  display: flex;
+  gap: 8px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+  padding: 2px 0;
+}
+.program-bullet {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+}
+.program-text {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+  margin: 2px 0;
+}
+.progress-prs-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 16px 0;
+}

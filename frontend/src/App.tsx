@@ -8,7 +8,7 @@ import { BottomNav } from './components/bottom-nav'
 import { useOffline } from './hooks/use-offline'
 import { api } from './api'
 
-type Tab = 'workout' | 'history' | 'profile'
+type Tab = 'workout' | 'program' | 'profile'
 
 export default function App() {
   const [onboarded, setOnboarded] = useState(
@@ -53,7 +53,7 @@ export default function App() {
         </div>
       )}
       {tab === 'workout' && <Workout />}
-      {tab === 'history' && (
+      {tab === 'program' && (
         <History onNavigateWorkout={() => setTab('workout')} />
       )}
       {tab === 'profile' && (
