@@ -16,6 +16,7 @@ export interface Layout {
 export interface ChatResponse {
   response: string
   layout: Layout | null
+  set_suggestion?: SetSuggestion | null
 }
 
 export interface SetLog {
@@ -46,6 +47,7 @@ export interface SetSuggestion {
   weight: number
   reps: number
   basis?: string
+  lastSet?: { weight: number; reps: number; rpe: number | null }
 }
 
 export interface Message {

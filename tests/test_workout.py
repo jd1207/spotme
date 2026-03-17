@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from server.database import Base, get_db
-from server.models import Program, Workout, Exercise, SystemMemory
+from server.models import Program, Workout, Exercise, Set, SystemMemory
 
 
 def _make_app_and_session():
@@ -51,6 +51,13 @@ def test_app():
     db.commit()
     db.close()
     return TestClient(app)
+
+
+@pytest.fixture
+def exercise_last_app():
+    """app with session factory for /exercise/last tests"""
+    app, TestSession = _make_app_and_session()
+    return TestClient(app), TestSession
 
 
 @pytest.fixture
@@ -130,3 +137,42 @@ def test_next_workout_no_match(next_workout_app):
     today_name = date.today().strftime("%A")
     assert today_name in data["summary"]
     assert "not found" in data["summary"].lower() or "Chat" in data["summary"]
+
+
+def test_exercise_last_with_data(exercise_last_app):
+    client, TestSession = exercise_last_app
+    session = TestSession()
+    program = Program(name="T", goal="t", phase="t")
+    session.add(program)
+    session.commit()
+    workout = Workout(
+        program_id=program.id,
+        date=date.today().isoformat(),
+        type="strength",
+        status="completed",
+    )
+    session.add(workout)
+    session.commit()
+    exercise = Exercise(workout_id=workout.id, name="Bench Press", order=1)
+    session.add(exercise)
+    session.commit()
+    session.add(Set(
+        exercise_id=exercise.id, weight=225, reps=5, rpe=7.5, completed=True,
+    ))
+    session.commit()
+    session.close()
+
+    resp = client.get("/api/exercise/last/Bench Press")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["sets"]) == 1
+    assert data["sets"][0]["weight"] == 225
+    assert data["sets"][0]["reps"] == 5
+    assert data["sets"][0]["rpe"] == 7.5
+
+
+def test_exercise_last_no_data(exercise_last_app):
+    client, _ = exercise_last_app
+    resp = client.get("/api/exercise/last/Nonexistent")
+    assert resp.status_code == 200
+    assert resp.json()["sets"] == []

@@ -69,7 +69,25 @@ async def get_next_workout(db: Session = Depends(get_db)):
 @router.get("/workout/recent")
 async def get_recent_workouts(db: Session = Depends(get_db)):
     workouts = db.query(Workout).order_by(Workout.date.desc()).limit(20).all()
-    return [{"id": w.id, "date": w.date, "type": w.type, "status": w.status, "duration": w.duration} for w in workouts]
+    result = []
+    for w in workouts:
+        exercises = db.query(Exercise).filter_by(workout_id=w.id).order_by(Exercise.order).all()
+        whoop = db.query(WhoopData).filter_by(date=w.date).first()
+        exercise_list = []
+        for ex in exercises:
+            sets = db.query(Set).filter_by(exercise_id=ex.id, completed=True).all()
+            if sets:
+                exercise_list.append({
+                    "name": ex.name,
+                    "sets": [{"weight": s.weight, "reps": s.reps, "rpe": s.rpe} for s in sets],
+                })
+        result.append({
+            "id": w.id, "date": w.date, "type": w.type,
+            "status": w.status, "duration": w.duration,
+            "exercises": exercise_list,
+            "recovery": whoop.recovery_score if whoop else None,
+        })
+    return result
 
 
 @router.get("/workout/today")
@@ -102,6 +120,26 @@ async def log_set(set_log: SetLog, db: Session = Depends(get_db)):
     db.add(new_set)
     db.commit()
     return {"id": new_set.id, "logged": True}
+
+
+@router.get("/exercise/last/{name}")
+async def get_last_exercise(name: str, db: Session = Depends(get_db)):
+    """get the most recent completed sets for an exercise"""
+    sets = (
+        db.query(Set.weight, Set.reps, Set.rpe, Workout.date)
+        .join(Exercise, Set.exercise_id == Exercise.id)
+        .join(Workout, Exercise.workout_id == Workout.id)
+        .filter(Exercise.name == name, Set.completed == True)
+        .order_by(Workout.date.desc())
+        .limit(5)
+        .all()
+    )
+    return {
+        "sets": [
+            {"weight": s.weight, "reps": s.reps, "rpe": s.rpe, "date": s.date}
+            for s in sets
+        ]
+    }
 
 
 @router.post("/workout/complete", response_model=WorkoutCompleteResponse)

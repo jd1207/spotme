@@ -39,6 +39,7 @@ export function ChatBubble({ role, content, setCard, onSetStart }: ChatBubblePro
           weight={setCard.weight}
           reps={setCard.reps}
           basis={setCard.basis}
+          lastSet={setCard.lastSet}
           onStart={onSetStart}
         />
       )}

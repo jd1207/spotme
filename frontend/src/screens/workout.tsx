@@ -98,6 +98,15 @@ export function Workout() {
       msg.setCard = structured
         ? { exercise: structured.exercise, weight: structured.weight, reps: structured.reps, basis: structured.basis || 'Claude suggestion' }
         : extractSetFromText(result.response)
+      // fetch previous performance for this exercise
+      if (msg.setCard) {
+        try {
+          const lastData = await api.getLastExercise(msg.setCard.exercise)
+          if (lastData.sets.length > 0) {
+            msg.setCard.lastSet = lastData.sets[0]
+          }
+        } catch { /* ignore — last set is a nice-to-have */ }
+      }
       setMessages(m => [...m, msg])
     } catch {
       setMessages(m => [...m, { role: 'assistant', content: 'Connection error — try again in a sec.' }])

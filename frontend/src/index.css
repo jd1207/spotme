@@ -944,6 +944,12 @@ button {
   color: white;
 }
 
+.set-card-last {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
 .set-card-basis {
   font-size: 0.75rem;
   color: var(--text-disabled);
