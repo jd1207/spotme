@@ -54,6 +54,15 @@ export interface Message {
   setCard?: SetSuggestion
 }
 
+export interface WhoopStats {
+  recovery_score: number | null
+  hrv: number | null
+  resting_hr: number | null
+  sleep_score: number | null
+  sleep_duration: number | null
+  strain: number | null
+}
+
 export interface SessionData {
   day: string
   type: string

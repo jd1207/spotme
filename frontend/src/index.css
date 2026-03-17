@@ -1358,6 +1358,125 @@ button {
   line-height: 1.4;
 }
 
+.whoop-today-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 16px;
+  padding: 10px 14px;
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  margin: 4px 0 8px;
+}
+
+.whoop-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.whoop-stat-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.whoop-stat-val {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.profile-test-btn {
+  background: var(--surface-1) !important;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: var(--radius-sm);
+  min-height: 40px;
+  transition: background var(--transition);
+}
+
+.profile-test-btn:active { background: var(--surface-2) !important; }
+.profile-test-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* ----------------------------------------------------------------
+   recovery banner
+   ---------------------------------------------------------------- */
+
+.recovery-banner {
+  background: var(--surface-1);
+  border-left: 4px solid var(--success);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  width: 100%;
+  max-width: 300px;
+}
+
+.recovery-zone {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.recovery-zone-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.recovery-zone-label {
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.recovery-zone-score {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-left: auto;
+}
+
+.recovery-stats {
+  display: flex;
+  gap: 16px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+/* ----------------------------------------------------------------
+   workout plan preview
+   ---------------------------------------------------------------- */
+
+.workout-plan-preview {
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  width: 100%;
+  max-width: 300px;
+}
+
+.workout-plan-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.workout-plan-text {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
 /* ----------------------------------------------------------------
    rest timer
    ---------------------------------------------------------------- */
