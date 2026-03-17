@@ -40,3 +40,34 @@ export interface WorkoutData {
   exercises: ExerciseData[]
   whoop_recovery: number | null
 }
+
+export interface SetSuggestion {
+  exercise: string
+  weight: number
+  reps: number
+  basis?: string
+}
+
+export interface Message {
+  role: 'user' | 'assistant'
+  content: string
+  setCard?: SetSuggestion
+}
+
+export interface SessionData {
+  day: string
+  type: string
+  status: 'completed' | 'today' | 'upcoming'
+  exercises?: string
+  recovery?: number
+  strain?: number
+  duration?: number
+}
+
+export interface WeekData {
+  number: number
+  label: string
+  sessions: SessionData[]
+  completed: number
+  total: number
+}

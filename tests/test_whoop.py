@@ -1,0 +1,325 @@
+import pytest
+from unittest.mock import AsyncMock, patch, MagicMock
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.pool import StaticPool
+from server.database import Base, get_db
+from server.models import Program, Workout, Exercise, Set, WhoopData, WhoopSyncQueue
+
+
+@pytest.fixture
+def engine():
+    eng = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(eng)
+    return eng
+
+
+@pytest.fixture
+def db(engine):
+    TestSession = sessionmaker(bind=engine)
+    session = TestSession()
+    yield session
+    session.close()
+
+
+@pytest.fixture
+def seeded_db(db):
+    program = Program(name="Test", goal="test", phase="test")
+    db.add(program)
+    db.commit()
+    workout = Workout(
+        program_id=program.id, date="2026-03-16",
+        type="strength", status="completed", duration=45,
+    )
+    db.add(workout)
+    db.commit()
+    exercise = Exercise(workout_id=workout.id, name="Bench Press", order=1)
+    db.add(exercise)
+    db.commit()
+    db.add(Set(exercise_id=exercise.id, weight=225, reps=5, rpe=7.5, completed=True))
+    db.add(Set(exercise_id=exercise.id, weight=225, reps=5, rpe=8.0, completed=True))
+    db.commit()
+    return db
+
+
+@pytest.fixture
+def test_app(engine):
+    from server.main import create_app
+    TestSession = sessionmaker(bind=engine)
+
+    def override_db():
+        session = TestSession()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app = create_app()
+    app.dependency_overrides[get_db] = override_db
+    return TestClient(app)
+
+
+# -- sync_whoop_biometrics tests --
+
+@pytest.mark.asyncio
+async def test_sync_biometrics_happy_path(db):
+    from server.services.whoop_service import sync_whoop_biometrics
+
+    mock_recovery = MagicMock()
+    mock_recovery.created_at = "2026-03-16T10:00:00Z"
+    mock_recovery.recovery_score = 85.0
+    mock_recovery.hrv = 72.5
+    mock_recovery.resting_hr = 50
+
+    mock_sleep = MagicMock()
+    mock_sleep.created_at = "2026-03-16T06:00:00Z"
+    mock_sleep.performance = 90.0
+    mock_sleep.total_in_bed_hours = 7.8
+
+    client = AsyncMock()
+    client.get_recovery.return_value = [mock_recovery]
+    client.get_sleep.return_value = [mock_sleep]
+
+    result = await sync_whoop_biometrics(db, client)
+    assert result["synced"] == 1
+
+    whoop = db.query(WhoopData).filter_by(date="2026-03-16").first()
+    assert whoop.recovery_score == 85.0
+    assert whoop.hrv == 72.5
+    assert whoop.sleep_score == 90.0
+    assert whoop.sleep_duration == 7.8
+
+
+@pytest.mark.asyncio
+async def test_sync_biometrics_api_error(db):
+    from server.services.whoop_service import sync_whoop_biometrics
+
+    client = AsyncMock()
+    # lazy-import the exception like production code does
+    from whoop import WhoopAPIError
+    client.get_recovery.side_effect = WhoopAPIError("endpoint moved", status_code=404)
+
+    result = await sync_whoop_biometrics(db, client)
+    assert result["synced"] == 0
+    assert "endpoint moved" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_sync_biometrics_skips_duplicates(db):
+    from server.services.whoop_service import sync_whoop_biometrics
+
+    db.add(WhoopData(date="2026-03-16", recovery_score=80.0, hrv=60.0, resting_hr=55))
+    db.commit()
+
+    mock_recovery = MagicMock()
+    mock_recovery.created_at = "2026-03-16T10:00:00Z"
+    mock_recovery.recovery_score = 85.0
+    mock_recovery.hrv = 72.5
+    mock_recovery.resting_hr = 50
+
+    client = AsyncMock()
+    client.get_recovery.return_value = [mock_recovery]
+    client.get_sleep.return_value = []
+
+    result = await sync_whoop_biometrics(db, client)
+    assert result["synced"] == 0
+
+    whoop = db.query(WhoopData).filter_by(date="2026-03-16").first()
+    assert whoop.recovery_score == 80.0  # unchanged
+
+
+# -- push_workout_to_whoop tests --
+
+@pytest.mark.asyncio
+async def test_push_workout_happy_path(seeded_db):
+    from server.services.whoop_service import push_workout_to_whoop
+
+    client = AsyncMock()
+    client.log_workout.return_value = {"activity_id": 12345, "exercises_linked": True}
+
+    workout = seeded_db.query(Workout).first()
+    result = await push_workout_to_whoop(seeded_db, client, workout.id)
+
+    assert result["synced"] is True
+    assert result["activity_id"] == 12345
+    client.log_workout.assert_called_once()
+
+    # verify timestamps use duration (45 min from noon)
+    call_args = client.log_workout.call_args[0][0]
+    assert call_args.start == "2026-03-16T12:00:00.000Z"
+    assert call_args.end == "2026-03-16T12:45:00.000Z"
+
+
+@pytest.mark.asyncio
+async def test_push_workout_queues_on_failure(seeded_db):
+    from server.services.whoop_service import push_workout_to_whoop
+    from whoop import WhoopAPIError
+
+    client = AsyncMock()
+    client.log_workout.side_effect = WhoopAPIError("server error", status_code=500)
+
+    workout = seeded_db.query(Workout).first()
+    result = await push_workout_to_whoop(seeded_db, client, workout.id)
+
+    assert result["synced"] is False
+    assert result["queued"] is True
+
+    queued = seeded_db.query(WhoopSyncQueue).first()
+    assert queued is not None
+    assert queued.workout_id == workout.id
+    assert queued.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_push_workout_not_found(db):
+    from server.services.whoop_service import push_workout_to_whoop
+
+    client = AsyncMock()
+    result = await push_workout_to_whoop(db, client, 9999)
+    assert result["synced"] is False
+    assert "not found" in result["error"]
+
+
+# -- process_whoop_queue tests --
+
+@pytest.mark.asyncio
+async def test_queue_retry_success(seeded_db):
+    from server.services.whoop_service import process_whoop_queue
+
+    workout = seeded_db.query(Workout).first()
+    seeded_db.add(WhoopSyncQueue(
+        workout_id=workout.id,
+        payload='{"date": "2026-03-16"}',
+        status="pending",
+        retries=1,
+    ))
+    seeded_db.commit()
+
+    mock_client = AsyncMock()
+    mock_client.log_workout.return_value = {"activity_id": 999}
+
+    with patch("server.services.whoop_service.create_whoop_client", return_value=mock_client), \
+         patch("server.services.whoop_service.settings") as mock_settings:
+        mock_settings.whoop_access_token = "fake-token"
+        result = await process_whoop_queue(seeded_db)
+
+    assert result["processed"] == 1
+    item = seeded_db.query(WhoopSyncQueue).first()
+    assert item.status == "synced"
+
+
+@pytest.mark.asyncio
+async def test_queue_retry_marks_failed_after_max(seeded_db):
+    from server.services.whoop_service import process_whoop_queue
+    from whoop import WhoopAPIError
+
+    workout = seeded_db.query(Workout).first()
+    seeded_db.add(WhoopSyncQueue(
+        workout_id=workout.id,
+        payload='{"date": "2026-03-16"}',
+        status="pending",
+        retries=2,  # one more attempt before max
+    ))
+    seeded_db.commit()
+
+    mock_client = AsyncMock()
+    mock_client.log_workout.side_effect = WhoopAPIError("still broken", status_code=500)
+
+    with patch("server.services.whoop_service.create_whoop_client", return_value=mock_client), \
+         patch("server.services.whoop_service.settings") as mock_settings:
+        mock_settings.whoop_access_token = "fake-token"
+        result = await process_whoop_queue(seeded_db)
+
+    assert result["processed"] == 0
+    item = seeded_db.query(WhoopSyncQueue).first()
+    assert item.status == "failed"
+    assert item.retries == 3
+
+
+@pytest.mark.asyncio
+async def test_queue_empty_noop(db):
+    from server.services.whoop_service import process_whoop_queue
+
+    with patch("server.services.whoop_service.settings") as mock_settings:
+        mock_settings.whoop_access_token = "fake-token"
+        mock_settings.whoop_client_id = ""
+        mock_settings.whoop_client_secret = ""
+        result = await process_whoop_queue(db)
+
+    assert result["processed"] == 0
+
+
+# -- route tests --
+
+def test_whoop_sync_no_token(test_app):
+    with patch("server.routes.whoop.settings") as mock_settings:
+        mock_settings.whoop_access_token = ""
+        resp = test_app.get("/api/whoop/sync")
+    assert resp.status_code == 200
+    assert resp.json()["error"] == "whoop not configured"
+
+
+def test_whoop_retry_no_token(test_app):
+    with patch("server.routes.whoop.settings") as mock_settings:
+        mock_settings.whoop_access_token = ""
+        resp = test_app.post("/api/whoop/retry")
+    assert resp.status_code == 200
+    assert resp.json()["error"] == "whoop not configured"
+
+
+def test_complete_workout_no_whoop(test_app, engine):
+    TestSession = sessionmaker(bind=engine)
+    session = TestSession()
+    from datetime import date
+    program = Program(name="T", goal="t", phase="t")
+    session.add(program)
+    session.commit()
+    workout = Workout(
+        program_id=program.id, date=date.today().isoformat(),
+        type="strength", status="active",
+    )
+    session.add(workout)
+    session.commit()
+    workout_id = workout.id
+    session.close()
+
+    with patch("server.routes.workout.settings") as mock_settings:
+        mock_settings.whoop_access_token = ""
+        resp = test_app.post("/api/workout/complete", json={"workout_id": workout_id})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "completed"
+    assert data["whoop_synced"] is False
+    assert data["whoop_error"] == "whoop not configured"
+
+
+# -- create_whoop_client tests --
+
+def test_create_client_with_auth():
+    with patch("server.services.whoop_service.settings") as mock_settings:
+        mock_settings.whoop_client_id = "my-id"
+        mock_settings.whoop_client_secret = "my-secret"
+        mock_settings.whoop_access_token = "fake-token"
+        client = None
+        from server.services.whoop_service import create_whoop_client
+        client = create_whoop_client()
+    assert client is not None
+    assert client._auth is not None
+    assert client._auth.client_id == "my-id"
+
+
+def test_create_client_token_only():
+    with patch("server.services.whoop_service.settings") as mock_settings:
+        mock_settings.whoop_client_id = ""
+        mock_settings.whoop_client_secret = ""
+        mock_settings.whoop_access_token = "bare-token"
+        from server.services.whoop_service import create_whoop_client
+        client = create_whoop_client()
+    assert client is not None
+    assert client._auth is None

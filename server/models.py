@@ -67,10 +67,33 @@ class FormCheck(Base):
 class Conversation(Base):
     __tablename__ = "conversations"
     id = Column(Integer, primary_key=True)
+    workout_id = Column(Integer, ForeignKey("workouts.id"), nullable=True)
     role = Column(String, nullable=False)
     content = Column(Text, nullable=False)
     context_type = Column(String, default="chat")
     created_at = Column(DateTime, server_default=func.now())
+
+class UserProfile(Base):
+    __tablename__ = "user_profiles"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False, default="")
+    goals = Column(String, nullable=True)
+    experience_level = Column(String, nullable=True)
+    equipment = Column(String, nullable=True)
+    training_frequency = Column(String, nullable=True)
+    injuries_notes = Column(Text, nullable=True)
+    preferences = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class SystemMemory(Base):
+    __tablename__ = "system_memory"
+    id = Column(Integer, primary_key=True)
+    key = Column(String, nullable=False, unique=True)
+    content = Column(Text, nullable=False, default="")
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
 
 class WhoopSyncQueue(Base):
     __tablename__ = "whoop_sync_queue"
