@@ -40,23 +40,30 @@ async def get_next_workout(db: Session = Depends(get_db)):
     from server.models import SystemMemory
     memory = db.query(SystemMemory).filter_by(key="training_plan").first()
     if not memory or not memory.content:
-        return {"summary": "No program loaded yet. Chat with Claude to set one up."}
-    # figure out what day it is and match to schedule
+        return {"summary": "No program loaded. Tell Claude about your training plan in Chat."}
+
     today = date.today()
-    day_name = today.strftime("%A")
-    # scan memory for today's day name or next scheduled session
+    day_name = today.strftime("%A")    # "Monday"
+    day_abbrev = today.strftime("%a")  # "Mon"
+
     lines = memory.content.split("\n")
     for line in lines:
-        if day_name.lower() in line.lower() and any(w in line.lower() for w in ["bench", "leg", "pull", "push", "upper", "lower", "back", "arms", "shoulder", "squat", "deadlift", "press"]):
-            # clean up the line
-            summary = line.strip().strip("|").strip("- ").strip()
-            if len(summary) > 10:
-                return {"summary": f"{day_name}: {summary}"}
-    # fallback: return the first few schedule-related lines
-    schedule_lines = [l.strip() for l in lines if any(w in l.lower() for w in ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "week"]) and len(l.strip()) > 5]
-    if schedule_lines:
-        return {"summary": schedule_lines[0]}
-    return {"summary": "Check your program in Chat with Claude."}
+        lower = line.lower().strip()
+        if not lower or lower.startswith("#"):
+            continue
+        if day_name.lower() in lower or day_abbrev.lower() in lower:
+            clean = line.strip().strip("-*|").strip()
+            if len(clean) > 10:
+                return {"summary": clean}
+
+    # fallback: match "Day N" based on weekday number (Mon=1, Tue=2, etc.)
+    weekday_num = today.weekday()  # 0=Mon
+    for line in lines:
+        lower = line.lower().strip()
+        if f"day {weekday_num + 1}" in lower and len(line.strip()) > 10:
+            return {"summary": line.strip().strip("-*|").strip()}
+
+    return {"summary": f"No {day_name} workout found in plan. Chat with Claude to update your program."}
 
 
 @router.get("/workout/recent")
