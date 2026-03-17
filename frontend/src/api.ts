@@ -19,7 +19,7 @@ export const api = {
   logSet: (set: import('./types').SetLog) => request<{ id: number; logged: boolean }>('/workout/set', { method: 'POST', body: JSON.stringify(set) }),
   completeWorkout: (workoutId: number) => request<{ status: string; whoop_synced: boolean }>('/workout/complete', { method: 'POST', body: JSON.stringify({ workout_id: workoutId }) }),
   getLayout: (screen: string) => request<import('./types').Layout>(`/layout?screen=${screen}`),
-  getProgress: () => request<{ bench_1rm_trend: object[]; whoop_trends: object }>('/progress'),
+  getProgress: () => request<import('./types').ProgressData>('/progress'),
   getProfile: () => request<{ id: number; name: string } | null>('/profile'),
   whoopStatus: () => request<{ connected: boolean; oauth_available: boolean; write_enabled: boolean }>('/whoop/status'),
   whoopLogin: (email: string, password: string) => request<{ success: boolean; error?: string }>('/whoop/login', { method: 'POST', body: JSON.stringify({ email, password }) }),

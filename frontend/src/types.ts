@@ -82,3 +82,18 @@ export interface WeekData {
   completed: number
   total: number
 }
+
+export interface TrendPoint {
+  date: string
+  [key: string]: unknown
+}
+
+export interface ProgressData {
+  e1rm_trend: TrendPoint[]
+  volume_trend: TrendPoint[]
+  whoop: {
+    recovery: TrendPoint[]
+    hrv: TrendPoint[]
+    strain: TrendPoint[]
+  }
+}

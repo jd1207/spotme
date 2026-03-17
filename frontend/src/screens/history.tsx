@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react'
 import { api } from '../api'
 import { WorkoutDetail } from '../components/workout-detail'
 import { PrsTab } from '../components/prs-tab'
+import { Progress } from './progress'
 
 interface HistoryProps {
   onNavigateWorkout?: () => void
 }
 
-type Segment = 'workouts' | 'prs'
+type Segment = 'workouts' | 'prs' | 'progress'
 
 interface WorkoutExercise {
   name: string
@@ -41,13 +42,13 @@ export function History({ onNavigateWorkout }: HistoryProps) {
   return (
     <div className="history-screen">
       <div className="segmented-control">
-        {(['workouts', 'prs'] as Segment[]).map(seg => (
+        {(['workouts', 'prs', 'progress'] as Segment[]).map(seg => (
           <button
             key={seg}
             className={`segment${activeSegment === seg ? ' active' : ''}`}
             onClick={() => setActiveSegment(seg)}
           >
-            {seg === 'prs' ? 'PRs' : 'Workouts'}
+            {seg === 'prs' ? 'PRs' : seg === 'progress' ? 'Progress' : 'Workouts'}
           </button>
         ))}
       </div>
@@ -76,6 +77,8 @@ export function History({ onNavigateWorkout }: HistoryProps) {
       )}
 
       {activeSegment === 'prs' && <PrsTab />}
+
+      {activeSegment === 'progress' && <Progress />}
     </div>
   )
 }
