@@ -1675,42 +1675,133 @@ button {
   font-size: 0.85rem;
   color: var(--text-secondary);
 }
-.program-section {
+
+/* progression bars */
+.program-progression {
   background: var(--surface-1);
   border-radius: var(--radius-sm);
   padding: 12px 14px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
-.program-section-title {
-  font-size: 0.9rem;
+.program-progression-label {
+  font-size: 0.75rem;
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  display: block;
   margin-bottom: 8px;
+}
+.program-progression-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 80px;
+}
+.program-progression-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  justify-content: flex-end;
+}
+.program-progression-weight {
+  font-size: 0.7rem;
+  font-weight: 600;
   color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.program-progression-bar {
+  width: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  min-height: 4px;
+}
+.program-progression-week {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* week accordions */
+.program-week {
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.program-week.current {
+  border-left: 3px solid var(--accent);
 }
 .program-week-header {
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: var(--accent);
-  margin: 10px 0 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  cursor: pointer;
 }
-.program-item {
+.program-week-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.program-week-check {
+  color: var(--success);
+  font-size: 0.9rem;
+}
+.program-week-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.program-chevron {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+.program-week-body {
+  padding: 0 14px 12px;
+}
+.program-day {
   display: flex;
   gap: 8px;
+  padding: 4px 0;
   font-size: 0.8rem;
   line-height: 1.5;
-  color: var(--text-primary);
-  padding: 2px 0;
 }
-.program-bullet {
+.program-day.completed {
+  color: var(--success);
+}
+.program-day-bullet {
   flex-shrink: 0;
   width: 14px;
   text-align: center;
+}
+
+/* section accordions (recurring day templates) */
+.program-section {
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.program-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+}
+.program-section-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.program-section-body {
+  padding: 0 14px 12px;
 }
 .program-text {
   font-size: 0.8rem;
   line-height: 1.5;
   color: var(--text-primary);
-  margin: 2px 0;
+  padding: 2px 0;
 }
 .progress-prs-divider {
   height: 1px;

@@ -1,14 +1,28 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api'
+import { ProgramWeek } from './program-week'
+import { ProgramSection } from './program-section'
+
+interface ProgramSectionData { title: string; content: string }
+interface WeekItem { number: number; title: string; items: string[] }
+interface ProgressionPoint { week: number; weight: number; label: string }
+
+interface LoggedWorkout {
+  status: string
+  duration: number | null
+  exercises: Array<{ name: string; sets: Array<{ weight: number; reps: number; rpe: number | null }> }>
+}
+
+interface WhoopEntry { recovery: number | null; hrv: number | null }
 
 interface ProgramData {
   has_program: boolean
-  content: string | null
-  stats: {
-    total_workouts: number
-    completed_workouts: number
-    today: string
-  } | null
+  sections: ProgramSectionData[]
+  weeks: WeekItem[]
+  progression: ProgressionPoint[]
+  logged: Record<string, LoggedWorkout>
+  whoop: Record<string, WhoopEntry>
+  stats: { total_workouts: number; completed_workouts: number; today: string }
 }
 
 export function ProgramView() {
@@ -17,7 +31,7 @@ export function ProgramView() {
 
   useEffect(() => {
     api.getProgram()
-      .then(setData)
+      .then(r => setData(r as ProgramData))
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
@@ -30,61 +44,45 @@ export function ProgramView() {
     </div>
   )
 
+  const maxWeight = Math.max(...(data.progression.map(p => p.weight)), 1)
+
   return (
     <div className="program-view">
-      {data.stats && (
-        <div className="program-stats">
-          <span className="program-stat">
-            {data.stats.completed_workouts} workouts completed
-          </span>
+      <div className="program-stats">
+        <span>{data.stats.completed_workouts} workouts done</span>
+      </div>
+
+      {data.progression.length > 0 && (
+        <div className="program-progression">
+          <span className="program-progression-label">Bench Peak Progression</span>
+          <div className="program-progression-bars">
+            {data.progression.map(p => (
+              <div key={p.week} className="program-progression-col">
+                <span className="program-progression-weight">{p.weight}</span>
+                <div
+                  className="program-progression-bar"
+                  style={{ height: `${(p.weight / maxWeight) * 100}%` }}
+                />
+                <span className="program-progression-week">{p.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
-      <div className="program-content">
-        {renderMarkdown(data.content!)}
-      </div>
+
+      {data.weeks.map(w => (
+        <ProgramWeek
+          key={w.number}
+          week={w}
+          logged={data.logged}
+          whoop={data.whoop}
+          today={data.stats.today}
+        />
+      ))}
+
+      {data.sections.map((s, i) => (
+        <ProgramSection key={i} title={s.title} content={s.content} />
+      ))}
     </div>
   )
-}
-
-function renderMarkdown(md: string) {
-  const sections = md.split(/^## /m).filter(Boolean)
-  return sections.map((section, i) => {
-    const lines = section.split('\n')
-    const title = lines[0]?.trim()
-    const body = lines.slice(1).join('\n').trim()
-    return (
-      <div key={i} className="program-section">
-        {title && <h3 className="program-section-title">{title}</h3>}
-        <div className="program-section-body">
-          {renderBody(body)}
-        </div>
-      </div>
-    )
-  })
-}
-
-function renderBody(text: string) {
-  const lines = text.split('\n')
-  return lines.map((line, i) => {
-    const trimmed = line.trim()
-    if (!trimmed) return null
-    if (trimmed.startsWith('### ')) {
-      return <h4 key={i} className="program-week-header">{trimmed.slice(4)}</h4>
-    }
-    if (trimmed.startsWith('- ')) {
-      const content = trimmed.slice(2)
-      const formatted = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      return (
-        <div key={i} className="program-item">
-          <span className="program-bullet">·</span>
-          <span dangerouslySetInnerHTML={{ __html: formatted }} />
-        </div>
-      )
-    }
-    const formatted = trimmed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    return (
-      <p key={i} className="program-text"
-        dangerouslySetInnerHTML={{ __html: formatted }} />
-    )
-  })
 }

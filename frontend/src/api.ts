@@ -19,7 +19,7 @@ export const api = {
   logSet: (set: import('./types').SetLog) => request<{ id: number; logged: boolean }>('/workout/set', { method: 'POST', body: JSON.stringify(set) }),
   completeWorkout: (workoutId: number) => request<{ status: string; whoop_synced: boolean }>('/workout/complete', { method: 'POST', body: JSON.stringify({ workout_id: workoutId }) }),
   getLayout: (screen: string) => request<import('./types').Layout>(`/layout?screen=${screen}`),
-  getProgram: () => request<{ has_program: boolean; content: string | null; stats: { total_workouts: number; completed_workouts: number; today: string } | null }>('/program'),
+  getProgram: () => request<{ has_program: boolean; sections: Array<{ title: string; content: string }>; weeks: Array<{ number: number; title: string; items: string[] }>; progression: Array<{ week: number; weight: number; label: string }>; logged: Record<string, { status: string; duration: number | null; exercises: Array<{ name: string; sets: Array<{ weight: number; reps: number; rpe: number | null }> }> }>; whoop: Record<string, { recovery: number | null; hrv: number | null }>; stats: { total_workouts: number; completed_workouts: number; today: string } }>('/program'),
   getProgress: () => request<import('./types').ProgressData>('/progress'),
   getProfile: () => request<{ id: number; name: string } | null>('/profile'),
   whoopStatus: () => request<{ connected: boolean; oauth_available: boolean; write_enabled: boolean }>('/whoop/status'),
