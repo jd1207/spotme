@@ -2191,3 +2191,16 @@ button {
   font-size: 0.75rem;
   color: var(--text-secondary);
 }
+
+/* day list screen */
+.day-list-screen {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 16px;
+}
+
+.day-list-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
