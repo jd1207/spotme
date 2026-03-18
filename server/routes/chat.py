@@ -1,4 +1,3 @@
-from datetime import date
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from server.database import get_db
@@ -9,7 +8,7 @@ from server.models import (
     Program, Workout, Exercise, Set, WhoopData,
     Conversation, UserProfile, SystemMemory, Meal,
 )
-from server.config import settings
+from server.config import settings, today_eastern
 
 router = APIRouter()
 
@@ -18,7 +17,7 @@ MEMORY_KEY = "training_plan"
 
 def _get_today_whoop(db: Session) -> dict | None:
     """return today's whoop data as a dict, or None"""
-    whoop = db.query(WhoopData).filter_by(date=date.today().isoformat()).first()
+    whoop = db.query(WhoopData).filter_by(date=today_eastern()).first()
     if not whoop:
         return None
     return {
@@ -104,7 +103,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         sqlfunc.sum(Meal.protein).label("protein"),
         sqlfunc.sum(Meal.carbs).label("carbs"),
         sqlfunc.sum(Meal.fat).label("fat"),
-    ).filter(Meal.date == date.today().isoformat()).first()
+    ).filter(Meal.date == today_eastern()).first()
     meal_totals = None
     if meal_row and meal_row.calories:
         meal_totals = {
@@ -150,7 +149,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     meal_data = result.get("meal")
     if meal_data and isinstance(meal_data, dict):
         db.add(Meal(
-            date=date.today().isoformat(),
+            date=today_eastern(),
             description=meal_data.get("description", ""),
             calories=meal_data.get("calories"),
             protein=meal_data.get("protein"),

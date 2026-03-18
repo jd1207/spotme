@@ -1,9 +1,10 @@
-from datetime import date, timedelta
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from server.database import get_db
 from server.models import Meal
+from server.config import TIMEZONE, today_eastern
 
 router = APIRouter()
 
@@ -12,7 +13,7 @@ router = APIRouter()
 async def log_meal(data: dict, db: Session = Depends(get_db)):
     """quick-add a meal with macros"""
     meal = Meal(
-        date=data.get("date", date.today().isoformat()),
+        date=data.get("date", today_eastern()),
         description=data.get("description", ""),
         calories=data.get("calories"),
         protein=data.get("protein"),
@@ -28,7 +29,7 @@ async def log_meal(data: dict, db: Session = Depends(get_db)):
 @router.get("/meals/today")
 async def get_today_meals(db: Session = Depends(get_db)):
     """get all meals and totals for today"""
-    today = date.today().isoformat()
+    today = today_eastern()
     meals = db.query(Meal).filter_by(date=today).order_by(Meal.created_at).all()
     total_cal = sum(m.calories or 0 for m in meals)
     total_protein = sum(m.protein or 0 for m in meals)
@@ -60,7 +61,7 @@ async def get_today_meals(db: Session = Depends(get_db)):
 @router.get("/meals/week")
 async def get_week_meals(db: Session = Depends(get_db)):
     """get daily totals for the past 7 days"""
-    today = date.today()
+    today = datetime.now(TIMEZONE).date()
     week_ago = (today - timedelta(days=6)).isoformat()
     rows = (
         db.query(
