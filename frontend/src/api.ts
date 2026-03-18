@@ -7,11 +7,13 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  chat: (message: string, workoutId?: number) => request<import('./types').ChatResponse>('/chat', { method: 'POST', body: JSON.stringify({ message, workout_id: workoutId ?? null }) }),
+  chat: (message: string, workoutId?: number, date?: string) => request<import('./types').ChatResponse>('/chat', { method: 'POST', body: JSON.stringify({ message, workout_id: workoutId ?? null, date: date ?? null }) }),
   startWorkout: (type?: string) => request<{ id: number; date: string; status: string; resumed: boolean }>('/workout/start', { method: 'POST', body: JSON.stringify({ type: type ?? 'strength' }) }),
   getRecentWorkouts: () => request<Array<{ id: number; date: string; type: string; status: string; duration: number | null; exercises: Array<{ name: string; sets: Array<{ weight: number; reps: number; rpe: number | null }> }>; recovery: number | null }>>('/workout/recent'),
   getPrs: () => request<{ prs: Array<{ exercise: string; weight: number; reps: number; e1rm: number; date: string }> }>('/progress/prs'),
   getChatHistory: (workoutId: number) => request<Array<{ role: string; content: string; created_at: string }>>(`/chat/history/${workoutId}`),
+  getChatDays: () => request<{ days: Array<{ date: string; message_count: number; workout_type: string | null; recovery_score: number | null; recovery_zone: string | null; calories_total: number }> }>('/chat/days'),
+  getChatDay: (date: string) => request<{ messages: Array<{ role: string; content: string; created_at: string }> }>(`/chat/day/${date}`),
   intake: (data: Record<string, string>) => request<{ status: string; response: string | null }>('/intake', { method: 'POST', body: JSON.stringify(data) }),
   getNextWorkout: () => request<{ summary: string }>('/workout/next'),
   getTodayWorkout: () => request<import('./types').WorkoutData>('/workout/today'),

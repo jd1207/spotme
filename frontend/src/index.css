@@ -2098,3 +2098,96 @@ button {
 .diet-meal-delete:active {
   color: var(--accent);
 }
+
+/* context banner */
+.context-banner {
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.context-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.context-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.context-text {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.context-workout {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.context-nutrition {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* day cards */
+.day-card {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: var(--surface-1) !important;
+  border: none;
+  border-left: 3px solid var(--text-disabled);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  text-align: left;
+  transition: background var(--transition);
+}
+
+.day-card.today { border-left-color: var(--accent); }
+.day-card:active { background: var(--surface-2) !important; }
+
+.day-card-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.day-card-headline {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.day-card-stats {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.day-card-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.day-card-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.day-card-date {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
