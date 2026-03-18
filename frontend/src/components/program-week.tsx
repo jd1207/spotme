@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { api } from '../api'
 import { ProgramDay } from './program-day'
 
 interface DayData {
@@ -7,6 +8,9 @@ interface DayData {
   planned: string
   note: string
   status: string
+  source?: string
+  exercises?: Array<{ name: string; sets: Array<{ weight: number; reps: number; rpe: number | null; set_type: string; status: string; target_weight: number | null; target_reps: number | null }> }>
+  summary?: { total_sets: number; top_set: string; avg_rpe: number | null } | null
 }
 
 interface WeekProps {
@@ -18,9 +22,18 @@ export function ProgramWeek({ week }: WeekProps) {
   const isCurrentWeek = week.title.toLowerCase().includes('current') ||
     week.days.some(d => d.status === 'completed')
   const [open, setOpen] = useState(isCurrentWeek)
+  const [enrichedDays, setEnrichedDays] = useState<DayData[] | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    api.getProgramWeek(week.number)
+      .then(r => setEnrichedDays(r.days))
+      .catch(() => {})
+  }, [open, week.number])
 
   const completedDays = week.days.filter(d => d.status === 'completed').length
   const totalDays = week.days.length
+  const displayDays = enrichedDays ?? week.days
 
   return (
     <div className={`program-week${isCurrentWeek ? ' current' : ''}`}>
@@ -35,7 +48,7 @@ export function ProgramWeek({ week }: WeekProps) {
       </div>
       {open && (
         <div className="program-week-body">
-          {week.days.map((day, i) => (
+          {displayDays.map((day, i) => (
             <ProgramDay key={i} day={day} />
           ))}
         </div>

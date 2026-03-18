@@ -1,11 +1,108 @@
 import { useState } from 'react'
 
+interface SetData {
+  weight: number
+  reps: number
+  rpe: number | null
+  set_type: string
+  status: string
+  target_weight: number | null
+  target_reps: number | null
+}
+
+interface ExerciseData {
+  name: string
+  sets: SetData[]
+}
+
+interface SummaryData {
+  total_sets: number
+  top_set: string
+  avg_rpe: number | null
+}
+
 interface DayData {
   day_of_week: string
   type: string
   planned: string
   note: string
   status: string
+  source?: string
+  exercises?: ExerciseData[]
+  summary?: SummaryData | null
+}
+
+function rpeDotColor(rpe: number): string {
+  if (rpe <= 7) return 'var(--success)'
+  if (rpe <= 8) return 'var(--info)'
+  if (rpe <= 9) return '#f0a500'
+  return 'var(--accent)'
+}
+
+function avgRpeLabel(avgRpe: number | null): string {
+  if (avgRpe === null) return ''
+  if (avgRpe <= 7) return 'Easy'
+  if (avgRpe <= 8) return 'Solid'
+  if (avgRpe <= 9) return 'Tough'
+  return 'Max'
+}
+
+function LoggedBody({ exercises, summary }: { exercises: ExerciseData[]; summary: SummaryData | null | undefined }) {
+  return (
+    <div>
+      {summary && (
+        <div className="program-day-summary">
+          {summary.total_sets} sets
+          {summary.top_set ? ` · Top: ${summary.top_set}` : ''}
+          {summary.avg_rpe !== null ? ` · ${avgRpeLabel(summary.avg_rpe)}` : ''}
+        </div>
+      )}
+      {exercises.map((ex, ei) => (
+        <div key={ei} className="program-exercise-group">
+          <div className="program-exercise-group-name">{ex.name}</div>
+          <div className="program-set-list">
+            {ex.sets.map((s, si) => {
+              const isWarmup = s.set_type === 'warmup'
+              const rowClass = `program-set-row${isWarmup ? ' warmup' : ' working'}`
+              return (
+                <div key={si} className={rowClass}>
+                  <span className="program-set-weight">{s.weight} x {s.reps}</span>
+                  {isWarmup && (
+                    <span className="program-set-type-label">warm-up</span>
+                  )}
+                  {!isWarmup && s.rpe !== null && (
+                    <span
+                      className="program-set-rpe-dot"
+                      style={{ backgroundColor: rpeDotColor(s.rpe) }}
+                    />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function PlannedBody({ day }: { day: DayData }) {
+  const exercises = day.planned
+    ? day.planned.split(',').map(e => e.trim()).filter(Boolean)
+    : []
+  return (
+    <div>
+      {exercises.map((ex, i) => (
+        <div key={i} className="program-exercise-item">
+          <span className="program-exercise-bullet">{'\u00b7'}</span>
+          <span className="program-exercise-text">{ex}</span>
+        </div>
+      ))}
+      {day.note && (
+        <div className="program-day-note">{day.note}</div>
+      )}
+    </div>
+  )
 }
 
 export function ProgramDay({ day }: { day: DayData }) {
@@ -16,10 +113,11 @@ export function ProgramDay({ day }: { day: DayData }) {
   const statusClass = day.status === 'completed' ? 'completed'
     : day.status === 'today' ? 'today' : 'upcoming'
 
-  // parse planned exercises from comma-separated string
-  const exercises = day.planned
+  const plannedExercises = day.planned
     ? day.planned.split(',').map(e => e.trim()).filter(Boolean)
     : []
+
+  const hasLoggedData = day.source === 'logged' && day.exercises && day.exercises.length > 0
 
   return (
     <div
@@ -34,9 +132,9 @@ export function ProgramDay({ day }: { day: DayData }) {
           <span className="program-day-name">
             {day.day_of_week}: {day.type}
           </span>
-          {!expanded && exercises.length > 0 && (
+          {!expanded && plannedExercises.length > 0 && (
             <span className="program-day-preview">
-              {exercises.length} exercise{exercises.length !== 1 ? 's' : ''}
+              {plannedExercises.length} exercise{plannedExercises.length !== 1 ? 's' : ''}
             </span>
           )}
         </div>
@@ -46,15 +144,10 @@ export function ProgramDay({ day }: { day: DayData }) {
       </div>
       {expanded && (
         <div className="program-day-body">
-          {exercises.map((ex, i) => (
-            <div key={i} className="program-exercise-item">
-              <span className="program-exercise-bullet">{'\u00b7'}</span>
-              <span className="program-exercise-text">{ex}</span>
-            </div>
-          ))}
-          {day.note && (
-            <div className="program-day-note">{day.note}</div>
-          )}
+          {hasLoggedData
+            ? <LoggedBody exercises={day.exercises!} summary={day.summary} />
+            : <PlannedBody day={day} />
+          }
         </div>
       )}
     </div>
