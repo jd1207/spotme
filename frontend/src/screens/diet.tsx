@@ -152,11 +152,11 @@ export function Diet() {
               {calRemaining !== null && `${calRemaining} cal`}
               {calRemaining !== null && proRemaining !== null && ' · '}
               {proRemaining !== null && `${Math.round(proRemaining)}g protein`}
-              {(calRemaining !== null || proRemaining !== null) && ' to go'}
+              {' to go'}
             </span>
-            <button className="diet-cta" onClick={() => console.log('get meal ideas')}>Get meal ideas →</button>
           </div>
         )}
+        <button className="diet-cta" onClick={() => console.log('get meal ideas')}>Get meal ideas →</button>
         {!targets.calories && !targets.protein && (
           <p className="diet-targets-hint">Tell Claude your daily targets to see progress bars</p>
         )}
