@@ -44,6 +44,9 @@ Always respond with valid JSON:
 - "profile" is optional (only when you learn new profile info). Supported fields: name, goals, experience_level, equipment, training_frequency, injuries_notes, calorie_target (int), protein_target (int). When the user mentions daily nutrition targets, set calorie_target and protein_target.
 - "memory_update" is optional (only when training memory should change)
 - "meal" is optional (only when the user describes food they ate)
+- "workout_plan" is optional — when the user starts a workout or says "starting my workout", generate the full warm-up and working set sequence from training memory. Format:
+  [{"exercise": "Bench Press", "set_type": "warmup", "weight": 135, "reps": 10}, {"exercise": "Bench Press", "set_type": "working", "weight": 235, "reps": 6}, ...]
+  Include all warm-up sets (progressive, ending near working weight) and all working sets. Order matters — warm-ups first, then working sets, then next exercise.
 
 Layout components available: header, stat_card, exercise_card, set_logger, rest_timer, text_block, video_prompt, chart, action_button, chat_bubble.
 
@@ -59,7 +62,11 @@ Always mention the recovery zone when starting a workout. Factor sleep score int
 ## Meal Tracking
 
 When the user describes a meal or food they ate, estimate the macros and include a "meal" field in your response:
-{"description": "200g chicken breast, cup of rice, broccoli", "calories": 650, "protein": 55, "carbs": 60, "fat": 12, "meal_type": "lunch"}
+{"description": "chicken and rice", "items": ["200g chicken breast", "Cup of white rice", "Steamed broccoli"], "calories": 650, "protein": 55, "carbs": 60, "fat": 12, "meal_type": "lunch"}
+
+When tracking a meal, also include an "items" array listing individual food items:
+{"description": "chicken and rice", "items": ["200g chicken breast", "Cup of white rice", "Steamed broccoli"], "calories": 650, "protein": 55, "carbs": 60, "fat": 12, "meal_type": "lunch"}
+Always set meal_type to one of: breakfast, lunch, dinner, snack.
 
 Be specific about your estimates. If the user just says "I had chicken and rice", ask for approximate portions. Common estimates:
 - Chicken breast 200g: 330 cal, 62g protein, 0g carbs, 7g fat
@@ -136,11 +143,11 @@ class ClaudeService:
             raw_text = await _call_claude(system, message)
         except RuntimeError as e:
             logger.error("claude call failed: %s", e)
-            return {"response": "Having trouble reaching Claude right now. Try again in a sec.", "layout": None, "profile": None, "memory_update": None, "set_suggestion": None, "meal": None}
+            return {"response": "Having trouble reaching Claude right now. Try again in a sec.", "layout": None, "profile": None, "memory_update": None, "set_suggestion": None, "meal": None, "workout_plan": None}
         try:
             parsed = json.loads(raw_text)
         except json.JSONDecodeError:
-            return {"response": raw_text, "layout": None, "profile": None, "memory_update": None, "set_suggestion": None, "meal": None}
+            return {"response": raw_text, "layout": None, "profile": None, "memory_update": None, "set_suggestion": None, "meal": None, "workout_plan": None}
         layout = parsed.get("layout")
         if layout:
             validation = validate_layout(layout)
@@ -152,6 +159,7 @@ class ClaudeService:
             "memory_update": parsed.get("memory_update"),
             "set_suggestion": parsed.get("set_suggestion"),
             "meal": parsed.get("meal"),
+            "workout_plan": parsed.get("workout_plan"),
         }
 
     async def analyze_form(self, frames_base64: list, context: str) -> dict:
