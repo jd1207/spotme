@@ -2204,3 +2204,123 @@ button {
   font-weight: 700;
   margin-bottom: 16px;
 }
+
+/* set card sticky */
+.set-card-sticky {
+  background: var(--surface-1);
+  border-top: 1px solid var(--border);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.set-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.set-card-exercise {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.set-card-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.set-card-prescription {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: white;
+}
+
+.set-card-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.set-card-skip {
+  flex: 1;
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  min-height: 44px;
+}
+
+.set-card-done {
+  flex: 2;
+  background: var(--accent) !important;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  min-height: 44px;
+}
+
+.set-card-progress {
+  font-size: 0.7rem;
+  color: var(--text-disabled);
+  text-align: center;
+}
+
+.set-card-done-text {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.set-card-feel-prompt {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.set-card-feel-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.set-card-feel {
+  flex: 1;
+  padding: 10px 4px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.8rem;
+  min-height: 44px;
+  border: 1px solid var(--border);
+}
+
+.set-card-feel-easy { background: var(--success) !important; color: #fff; border-color: var(--success); }
+.set-card-feel-solid { background: var(--info) !important; color: #fff; border-color: var(--info); }
+.set-card-feel-tough { background: #f0a500 !important; color: #fff; border-color: #f0a500; }
+.set-card-feel-max { background: var(--accent) !important; color: #fff; border-color: var(--accent); }
+
+.set-card-rest-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.set-card-timer {
+  font-size: 1.2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--success);
+}
+
+.set-card-next {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

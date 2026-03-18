@@ -20,6 +20,7 @@ export const api = {
   getLastExercise: (name: string) => request<{ sets: Array<{ weight: number; reps: number; rpe: number | null; date: string }> }>(`/exercise/last/${encodeURIComponent(name)}`),
   logSet: (set: import('./types').SetLog) => request<{ id: number; logged: boolean }>('/workout/set', { method: 'POST', body: JSON.stringify(set) }),
   completeWorkout: (workoutId: number) => request<{ status: string; whoop_synced: boolean }>('/workout/complete', { method: 'POST', body: JSON.stringify({ workout_id: workoutId }) }),
+  completeSet: (data: { set_id: number; actual_weight: number; actual_reps: number; actual_rpe?: number; feel?: string }) => request<import('./types').CompleteSetResponse>('/workout/complete-set', { method: 'POST', body: JSON.stringify(data) }),
   getLayout: (screen: string) => request<import('./types').Layout>(`/layout?screen=${screen}`),
   getProgram: () => request<{ has_program: boolean; weeks: Array<{ number: number; title: string; days: Array<{ day_of_week: string; type: string; planned: string; note: string; status: string }> }>; progression: Array<{ week: number; weight: number; label: string }>; stats: { total_workouts: number; completed_workouts: number; today: string } }>('/program'),
   getProgress: () => request<import('./types').ProgressData>('/progress'),
