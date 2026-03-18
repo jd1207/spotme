@@ -171,7 +171,7 @@ def _extract_progression(weeks: list) -> list:
     for w in weeks:
         max_weight = 0
         for day in w.get("days", []):
-            weights = re.findall(r'(\d{3})x\d+', day.get("planned", ""))
+            weights = re.findall(r'(\d{2,3})x\d+', day.get("planned", ""))
             for wt in weights:
                 val = int(wt)
                 if val > max_weight:

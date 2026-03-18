@@ -1,11 +1,6 @@
-import type { SetSuggestion } from '../types'
-import { SetCard } from './set-card'
-
 interface ChatBubbleProps {
   role: string
   content: string
-  setCard?: SetSuggestion
-  onSetStart?: () => void
 }
 
 function formatContent(text: string) {
@@ -28,21 +23,11 @@ function formatContent(text: string) {
   })
 }
 
-export function ChatBubble({ role, content, setCard, onSetStart }: ChatBubbleProps) {
+export function ChatBubble({ role, content }: ChatBubbleProps) {
   return (
     <div className={`chat-bubble ${role}`}>
       {role === 'assistant' && <span className="claude-label">CLAUDE</span>}
       <div className="chat-content">{formatContent(content)}</div>
-      {setCard && (
-        <SetCard
-          exercise={setCard.exercise}
-          weight={setCard.weight}
-          reps={setCard.reps}
-          basis={setCard.basis}
-          lastSet={setCard.lastSet}
-          onStart={onSetStart}
-        />
-      )}
     </div>
   )
 }

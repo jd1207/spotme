@@ -3,11 +3,15 @@ from pydantic import BaseModel
 class ChatRequest(BaseModel):
     message: str
     workout_id: int | None = None
+    date: str | None = None
 
 class ChatResponse(BaseModel):
     response: str
     layout: dict | None = None
     set_suggestion: dict | None = None
+    workout_active: bool = False
+    current_set: dict | None = None
+    workout_id: int | None = None
 
 class SetLog(BaseModel):
     exercise_name: str
@@ -15,6 +19,14 @@ class SetLog(BaseModel):
     reps: int
     rpe: float | None = None
     notes: str | None = None
+
+class CompleteSetRequest(BaseModel):
+    set_id: int
+    actual_weight: float
+    actual_reps: int
+    actual_rpe: float | None = None
+    feel: str | None = None
+
 
 class WorkoutCompleteRequest(BaseModel):
     workout_id: int

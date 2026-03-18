@@ -1,87 +1,86 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
 import { ChatBubble } from '../components/chat-bubble'
-import { RestTimer } from '../components/rest-timer'
-import { WorkoutHome } from './workout-home'
-import type { Message, SetSuggestion } from '../types'
+import { SetCard } from '../components/set-card'
+import { ContextBanner } from '../components/context-banner'
+import { DayList } from './workout-home'
+import type { Message, PlannedSet, SetProgress } from '../types'
 
-const REST_DURATION = 120
+function todayEastern(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+}
 
-// fallback: extract set suggestion from claude's text via regex
-function extractSetFromText(text: string): SetSuggestion | undefined {
-  const match = text.match(/(\d+)\s*(?:lbs?)?\s*[x\u00d7]\s*(\d+)/)
-  if (!match) return undefined
-  const exMatch = text.match(/(?:for|on|do)\s+([A-Z][a-z]+(?:\s+[A-Za-z]+){0,3})/i)
-  return {
-    exercise: exMatch ? exMatch[1] : 'Next Set',
-    weight: parseInt(match[1]),
-    reps: parseInt(match[2]),
-    basis: 'Based on your feedback',
-  }
+function formatDateHeader(date: string): string {
+  if (date === todayEastern()) return 'Today'
+  const d = new Date(date + 'T12:00:00')
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
 export function Workout() {
-  const [activeWorkoutId, setActiveWorkoutId] = useState<number | null>(null)
-  const [viewOnly, setViewOnly] = useState(false)
+  const [workoutId, setWorkoutId] = useState<number | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [thinking, setThinking] = useState(false)
-  const [showRest, setShowRest] = useState(false)
+  const [chatDate, setChatDate] = useState(todayEastern)
+  const [showDayList, setShowDayList] = useState(false)
+  const [currentSet, setCurrentSet] = useState<PlannedSet | null>(null)
+  const [setProgress, setSetProgress] = useState<SetProgress | null>(null)
+  const [nextPreview, setNextPreview] = useState<string | null>(null)
   const messagesRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (messagesRef.current) {
-      messagesRef.current.scrollTop = messagesRef.current.scrollHeight
-    }
-  }, [messages, thinking, showRest])
+    // use setTimeout to scroll after DOM updates
+    setTimeout(() => {
+      if (messagesRef.current) messagesRef.current.scrollTop = messagesRef.current.scrollHeight
+    }, 50)
+  }, [messages, thinking])
 
-  const startWorkout = async () => {
-    try {
-      const result = await api.startWorkout()
-      setActiveWorkoutId(result.id)
-      setViewOnly(false)
-      if (result.resumed) {
-        const history = await api.getChatHistory(result.id)
-        setMessages(history.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })))
-      }
-    } catch {
-      // offline fallback
-    }
-  }
-
-  const startGeneralChat = () => {
-    setActiveWorkoutId(-1)
-    setViewOnly(false)
-    setMessages([])
-  }
+  useEffect(() => {
+    if (workoutId) return
+    api.getChatDay(chatDate)
+      .then(r => setMessages(r.messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))))
+      .catch(() => setMessages([]))
+  }, [chatDate, workoutId])
 
   const endWorkout = async () => {
-    if (activeWorkoutId && activeWorkoutId > 0 && !viewOnly) {
-      try {
-        await api.completeWorkout(activeWorkoutId)
-      } catch {}
+    if (workoutId && workoutId > 0) {
+      try { await api.completeWorkout(workoutId) } catch {}
     }
-    setActiveWorkoutId(null)
-    setViewOnly(false)
+    setWorkoutId(null)
+    setCurrentSet(null)
+    setSetProgress(null)
+    setNextPreview(null)
+    setChatDate(todayEastern())
     setMessages([])
   }
 
-  const viewPastWorkout = async (workoutId: number) => {
-    try {
-      const history = await api.getChatHistory(workoutId)
-      setMessages(history.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })))
-      setActiveWorkoutId(workoutId)
-      setViewOnly(true)
-    } catch {}
+  const applySetResult = (result: import('../types').CompleteSetResponse) => {
+    if (result.next_set) {
+      setCurrentSet(result.next_set)
+      setSetProgress(result.progress)
+      setNextPreview(result.next_exercise_preview)
+    } else {
+      setCurrentSet(null)
+      setMessages(m => [...m, { role: 'assistant', content: 'Workout complete! Great session.' }])
+    }
   }
 
-  const handleSetStart = (suggestion: SetSuggestion) => {
-    api.logSet({
-      exercise_name: suggestion.exercise,
-      weight: suggestion.weight,
-      reps: suggestion.reps,
-    }).catch(() => {})
-    setShowRest(true)
+  const handleSetComplete = async (weight: number, reps: number, feel: string | null) => {
+    if (!currentSet) return
+    try {
+      applySetResult(await api.completeSet({
+        set_id: currentSet.id, actual_weight: weight, actual_reps: reps, feel: feel ?? undefined,
+      }))
+    } catch { /* set card stays on current set */ }
+  }
+
+  const handleSetSkip = async () => {
+    if (!currentSet) return
+    try {
+      applySetResult(await api.completeSet({
+        set_id: currentSet.id, actual_weight: 0, actual_reps: 0, feel: undefined,
+      }))
+    } catch {}
   }
 
   const send = async (text: string) => {
@@ -90,24 +89,14 @@ export function Workout() {
     setInput('')
     setThinking(true)
     try {
-      const wid = activeWorkoutId && activeWorkoutId > 0 ? activeWorkoutId : undefined
-      const result = await api.chat(text, wid)
-      const msg: Message = { role: 'assistant', content: result.response }
-      // prefer structured set_suggestion from api, fall back to regex
-      const structured = result.set_suggestion
-      msg.setCard = structured
-        ? { exercise: structured.exercise, weight: structured.weight, reps: structured.reps, basis: structured.basis || 'Claude suggestion' }
-        : extractSetFromText(result.response)
-      // fetch previous performance for this exercise
-      if (msg.setCard) {
-        try {
-          const lastData = await api.getLastExercise(msg.setCard.exercise)
-          if (lastData.sets.length > 0) {
-            msg.setCard.lastSet = lastData.sets[0]
-          }
-        } catch { /* ignore — last set is a nice-to-have */ }
+      const wid = workoutId && workoutId > 0 ? workoutId : undefined
+      const result = await api.chat(text, wid, wid ? undefined : chatDate)
+      setMessages(m => [...m, { role: 'assistant', content: result.response }])
+      if (result.workout_active && result.current_set) {
+        setWorkoutId(result.workout_id ?? null)
+        setCurrentSet(result.current_set)
+        setSetProgress({ completed: 0, total: 0, current_exercise_progress: '0 of 0' })
       }
-      setMessages(m => [...m, msg])
     } catch {
       setMessages(m => [...m, { role: 'assistant', content: 'Connection error — try again in a sec.' }])
     } finally {
@@ -115,49 +104,70 @@ export function Workout() {
     }
   }
 
-  if (!activeWorkoutId) {
-    return <WorkoutHome onStartWorkout={startWorkout} onStartChat={startGeneralChat} onViewPast={viewPastWorkout} />
+  // state B: day list
+  if (!workoutId && showDayList) {
+    return <DayList onSelectDay={(date: string) => { setChatDate(date); setShowDayList(false) }} />
   }
 
+  const thinkingIndicator = thinking && (
+    <div className="chat-bubble assistant typing">
+      <span className="claude-label">CLAUDE</span>
+      <span className="typing-dots"><span /><span /><span /></span>
+    </div>
+  )
+
+  const inputBar = (placeholder: string) => (
+    <div className="input-bar">
+      <input value={input} onChange={e => setInput(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && send(input)} placeholder={placeholder} />
+      <button className="send-btn" onClick={() => send(input)}>{'\u2191'}</button>
+    </div>
+  )
+
+  // state C: active workout with sticky set card
+  if (workoutId) {
+    return (
+      <div className="coach-screen">
+        <div className="workout-chat-header">
+          <button className="end-workout-btn" onClick={endWorkout}>End</button>
+          <span className="workout-chat-title">Workout</span>
+        </div>
+        <div className="messages" ref={messagesRef}>
+          {messages.length === 0 && (
+            <div className="messages-empty">
+              <p className="messages-empty-text">Tell Claude what you're working on. It has your full training plan and history.</p>
+            </div>
+          )}
+          {messages.map((m, i) => <ChatBubble key={i} role={m.role} content={m.content} />)}
+          {thinkingIndicator}
+        </div>
+        {currentSet && setProgress && (
+          <SetCard currentSet={currentSet} progress={setProgress} nextPreview={nextPreview}
+            onComplete={handleSetComplete} onSkip={handleSetSkip} />
+        )}
+        {inputBar('Tell Claude how that set felt...')}
+      </div>
+    )
+  }
+
+  // state A: daily chat (default)
   return (
     <div className="coach-screen">
       <div className="workout-chat-header">
-        <button className="end-workout-btn" onClick={endWorkout}>{viewOnly ? 'Back' : activeWorkoutId === -1 ? 'Close' : 'End'}</button>
-        <span className="workout-chat-title">{viewOnly ? 'Past Workout' : activeWorkoutId === -1 ? 'Chat' : 'Workout'}</span>
-        {showRest && !viewOnly && <span className="rest-indicator">Resting</span>}
+        <button className="end-workout-btn" onClick={() => setShowDayList(true)}>{'\u2190'} Days</button>
+        <span className="workout-chat-title">{formatDateHeader(chatDate)}</span>
       </div>
       <div className="messages" ref={messagesRef}>
+        <ContextBanner date={chatDate} />
         {messages.length === 0 && (
           <div className="messages-empty">
-            <p className="messages-empty-text">
-              Tell Claude what you're working on. It has your full training plan and history.
-            </p>
+            <p className="messages-empty-text">Chat with Claude about training, nutrition, or anything else.</p>
           </div>
         )}
-        {messages.map((m, i) => (
-          <ChatBubble key={i} role={m.role} content={m.content} setCard={m.setCard} onSetStart={m.setCard ? () => handleSetStart(m.setCard!) : undefined} />
-        ))}
-        {showRest && !viewOnly && (
-          <RestTimer seconds={REST_DURATION} onComplete={() => setShowRest(false)} />
-        )}
-        {thinking && (
-          <div className="chat-bubble assistant typing">
-            <span className="claude-label">CLAUDE</span>
-            <span className="typing-dots"><span /><span /><span /></span>
-          </div>
-        )}
+        {messages.map((m, i) => <ChatBubble key={i} role={m.role} content={m.content} />)}
+        {thinkingIndicator}
       </div>
-      {!viewOnly && (
-        <div className="input-bar">
-          <input
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && send(input)}
-            placeholder="Tell Claude how that set felt..."
-          />
-          <button className="send-btn" onClick={() => send(input)}>{'\u2191'}</button>
-        </div>
-      )}
+      {inputBar('Ask Claude anything...')}
     </div>
   )
 }

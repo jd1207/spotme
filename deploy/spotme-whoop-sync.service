@@ -4,4 +4,4 @@ Description=Whoop biometric sync job
 [Service]
 Type=oneshot
 WorkingDirectory=%h/spotme
-ExecStart=%h/.local/bin/python -c "import asyncio; from server.services.whoop_service import sync_whoop_biometrics; from server.database import SessionLocal; from whoop import WhoopClient; from server.config import settings; db=SessionLocal(); asyncio.run(sync_whoop_biometrics(db, WhoopClient(token=settings.whoop_access_token)))"
+ExecStart=%h/spotme/.venv/bin/python -m server.cli whoop_sync

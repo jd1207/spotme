@@ -1,8 +1,8 @@
 [Unit]
-Description=Daily Whoop biometric sync
+Description=Whoop biometric sync (every 4 hours)
 
 [Timer]
-OnCalendar=*-*-* 07:00:00
+OnCalendar=*-*-* 00,04,08,12,16,20:00:00
 Persistent=true
 
 [Install]

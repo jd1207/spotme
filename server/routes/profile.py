@@ -19,6 +19,8 @@ async def get_profile(db: Session = Depends(get_db)):
         "equipment": profile.equipment,
         "training_frequency": profile.training_frequency,
         "injuries_notes": profile.injuries_notes,
+        "calorie_target": profile.calorie_target,
+        "protein_target": profile.protein_target,
     }
 
 
@@ -26,8 +28,8 @@ async def get_profile(db: Session = Depends(get_db)):
 async def save_profile(data: dict, db: Session = Depends(get_db)):
     profile = db.query(UserProfile).first()
     if profile:
-        for key in ["name", "goals", "experience_level", "equipment", "training_frequency", "injuries_notes"]:
-            if key in data and data[key]:
+        for key in ["name", "goals", "experience_level", "equipment", "training_frequency", "injuries_notes", "calorie_target", "protein_target"]:
+            if key in data and data[key] is not None:
                 setattr(profile, key, data[key])
     else:
         profile = UserProfile(
@@ -37,6 +39,8 @@ async def save_profile(data: dict, db: Session = Depends(get_db)):
             equipment=data.get("equipment"),
             training_frequency=data.get("training_frequency"),
             injuries_notes=data.get("injuries_notes"),
+            calorie_target=data.get("calorie_target"),
+            protein_target=data.get("protein_target"),
         )
         db.add(profile)
     db.commit()

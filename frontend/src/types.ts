@@ -17,6 +17,9 @@ export interface ChatResponse {
   response: string
   layout: Layout | null
   set_suggestion?: SetSuggestion | null
+  workout_active?: boolean
+  current_set?: PlannedSet | null
+  workout_id?: number | null
 }
 
 export interface SetLog {
@@ -53,7 +56,6 @@ export interface SetSuggestion {
 export interface Message {
   role: 'user' | 'assistant'
   content: string
-  setCard?: SetSuggestion
 }
 
 export interface WhoopStats {
@@ -96,4 +98,28 @@ export interface ProgressData {
     hrv: TrendPoint[]
     strain: TrendPoint[]
   }
+}
+
+export interface PlannedSet {
+  id: number
+  exercise: string
+  set_type: 'warmup' | 'working'
+  weight: number
+  reps: number
+  set_number: number
+  total_of_type: number
+  order: number
+}
+
+export interface SetProgress {
+  completed: number
+  total: number
+  current_exercise_progress: string
+}
+
+export interface CompleteSetResponse {
+  logged_set: { id: number; weight: number; reps: number; rpe: number | null; status: string }
+  next_set: PlannedSet | null
+  progress: SetProgress
+  next_exercise_preview: string | null
 }

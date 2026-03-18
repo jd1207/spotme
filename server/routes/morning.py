@@ -1,15 +1,14 @@
 import logging
-from datetime import date
+from datetime import datetime
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from server.database import get_db
 from server.models import WhoopData, SystemMemory
+from server.config import TIMEZONE
+from server.utils import recovery_zone
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-RECOVERY_GREEN = 67
-RECOVERY_YELLOW = 34
 
 
 @router.get("/morning")
@@ -17,14 +16,15 @@ async def morning_briefing(
     db: Session = Depends(get_db),
     notify: bool = Query(False),
 ):
-    today = date.today()
-    day_name = today.strftime("%A")
-    day_abbrev = today.strftime("%a")
+    now = datetime.now(TIMEZONE)
+    today_str = now.strftime("%Y-%m-%d")
+    day_name = now.strftime("%A")
+    day_abbrev = now.strftime("%a")
 
     # get today's whoop data
-    whoop = db.query(WhoopData).filter_by(date=today.isoformat()).first()
+    whoop = db.query(WhoopData).filter_by(date=today_str).first()
     recovery = whoop.recovery_score if whoop else None
-    zone = _recovery_zone(recovery)
+    zone = recovery_zone(recovery)
 
     # get today's planned workout from training memory
     plan = _find_plan(db, day_name, day_abbrev)
@@ -33,7 +33,7 @@ async def morning_briefing(
     coaching = _coaching_note(zone)
 
     briefing = {
-        "date": today.isoformat(),
+        "date": today_str,
         "day": day_name,
         "zone": zone,
         "recovery": recovery,
@@ -51,16 +51,6 @@ async def morning_briefing(
             logger.warning("failed to send notification: %s", e)
 
     return briefing
-
-
-def _recovery_zone(recovery: float | None) -> str:
-    if recovery is None:
-        return "UNKNOWN"
-    if recovery >= RECOVERY_GREEN:
-        return "GREEN"
-    if recovery >= RECOVERY_YELLOW:
-        return "YELLOW"
-    return "RED"
 
 
 def _find_plan(db: Session, day_name: str, day_abbrev: str) -> str:

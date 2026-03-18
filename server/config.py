@@ -13,3 +13,12 @@ class Settings(BaseSettings):
         env_file = ".env"
 
 settings = Settings()
+
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+TIMEZONE = ZoneInfo("America/New_York")
+
+
+def today_eastern() -> str:
+    return datetime.now(TIMEZONE).strftime("%Y-%m-%d")

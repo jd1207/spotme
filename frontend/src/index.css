@@ -1843,6 +1843,68 @@ button {
   font-style: italic;
   margin-top: 4px;
 }
+
+/* program set rows */
+.program-set-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
+
+.program-set-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  padding: 2px 0;
+}
+
+.program-set-row.warmup {
+  opacity: 0.5;
+  font-size: 0.75rem;
+}
+
+.program-set-weight {
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 70px;
+}
+
+.program-set-row.working .program-set-weight {
+  color: var(--accent);
+}
+
+.program-set-type-label {
+  font-size: 0.7rem;
+  color: var(--text-disabled);
+}
+
+.program-set-rpe-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.program-day-summary {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.program-exercise-group {
+  margin-top: 6px;
+}
+
+.program-exercise-group-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
 .progress-prs-divider {
   height: 1px;
   background: var(--border);
@@ -1891,4 +1953,552 @@ button {
 .nutrition-unit {
   font-size: 0.75rem;
   color: var(--text-secondary);
+}
+
+.nutrition-bar-bg {
+  width: 100%;
+  height: 4px;
+  background: var(--surface-2);
+  border-radius: 2px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.nutrition-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width var(--transition);
+}
+
+/* ----------------------------------------------------------------
+   weekly summary (dashboard)
+   ---------------------------------------------------------------- */
+
+.weekly-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  width: 100%;
+  max-width: 300px;
+}
+
+.weekly-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
+.weekly-count {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ----------------------------------------------------------------
+   diet screen
+   ---------------------------------------------------------------- */
+
+.diet-screen {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.diet-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-bottom: 16px;
+  align-self: flex-start;
+  max-width: 400px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.diet-macro-progress {
+  width: 100%;
+  max-width: 400px;
+  background: var(--surface-1);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.diet-progress-row {
+  margin-bottom: 12px;
+}
+
+.diet-progress-row:last-child {
+  margin-bottom: 0;
+}
+
+.diet-progress-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.diet-bar-bg {
+  width: 100%;
+  height: 8px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.diet-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width var(--transition);
+}
+
+.diet-progress-text {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.diet-breakdown {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.diet-breakdown-item {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.diet-targets-hint {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 8px;
+  font-style: italic;
+}
+
+.diet-meals,
+.diet-trends,
+.diet-prev-days {
+  width: 100%;
+  max-width: 400px;
+  margin-bottom: 16px;
+}
+
+.diet-section-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.diet-empty {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  padding: 16px;
+  text-align: center;
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+}
+
+.diet-meal-card {
+  padding: 12px 14px;
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+}
+
+.diet-meal-header {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.diet-meal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.diet-meal-desc {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.diet-meal-items {
+  list-style: disc;
+  padding-left: 16px;
+  margin: 0 0 2px 0;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.diet-meal-items li {
+  margin-bottom: 2px;
+}
+
+.diet-meal-macros {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.diet-meal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.diet-meal-fix {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--info);
+  padding: 2px 8px;
+  border: 1px solid var(--info);
+  border-radius: 4px;
+  transition: opacity var(--transition);
+}
+
+.diet-meal-fix:active {
+  opacity: 0.6;
+}
+
+.diet-meal-delete {
+  font-size: 1.2rem;
+  color: var(--text-secondary);
+  padding: 2px 6px;
+  flex-shrink: 0;
+  transition: color var(--transition);
+}
+
+.diet-meal-delete:active {
+  color: var(--accent);
+}
+
+.diet-remaining-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  gap: 8px;
+}
+
+.diet-remaining {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.diet-cta {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+  padding: 4px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  transition: opacity var(--transition);
+}
+
+.diet-cta:active {
+  opacity: 0.6;
+}
+
+.diet-prev-card {
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.diet-prev-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  text-align: left;
+}
+
+.diet-prev-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.diet-prev-summary {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.diet-prev-chevron {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.diet-prev-meals {
+  padding: 0 14px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.diet-prev-meals .diet-meal-card {
+  background: var(--surface-2);
+}
+
+.diet-meal-card--readonly .diet-meal-body {
+  margin-top: 4px;
+}
+
+/* context banner */
+.context-banner {
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.context-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.context-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.context-text {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.context-workout {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.context-nutrition {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* day cards */
+.day-card {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: var(--surface-1) !important;
+  border: none;
+  border-left: 3px solid var(--text-disabled);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  text-align: left;
+  transition: background var(--transition);
+}
+
+.day-card.today { border-left-color: var(--accent); }
+.day-card:active { background: var(--surface-2) !important; }
+
+.day-card-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.day-card-headline {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.day-card-stats {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.day-card-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.day-card-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.day-card-date {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+/* day list screen */
+.day-list-screen {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 16px;
+}
+
+.day-list-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+/* set card sticky */
+.set-card-sticky {
+  background: var(--surface-1);
+  border-top: 1px solid var(--border);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.set-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.set-card-exercise {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.set-card-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.set-card-prescription {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: white;
+}
+
+.set-card-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.set-card-skip {
+  flex: 1;
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  min-height: 44px;
+}
+
+.set-card-done {
+  flex: 2;
+  background: var(--accent) !important;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  min-height: 44px;
+}
+
+.set-card-progress {
+  font-size: 0.7rem;
+  color: var(--text-disabled);
+  text-align: center;
+}
+
+.set-card-done-text {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.set-card-feel-prompt {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.set-card-feel-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.set-card-feel {
+  flex: 1;
+  padding: 10px 4px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.8rem;
+  min-height: 44px;
+  border: 1px solid var(--border);
+}
+
+.set-card-feel-easy { background: var(--success) !important; color: #fff; border-color: var(--success); }
+.set-card-feel-solid { background: var(--info) !important; color: #fff; border-color: var(--info); }
+.set-card-feel-tough { background: #f0a500 !important; color: #fff; border-color: #f0a500; }
+.set-card-feel-max { background: var(--accent) !important; color: #fff; border-color: var(--accent); }
+
+.set-card-rest-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.set-card-timer {
+  font-size: 1.2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--success);
+}
+
+.set-card-next {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }

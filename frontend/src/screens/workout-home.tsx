@@ -1,64 +1,47 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api'
-import { RecoveryBanner } from '../components/recovery-banner'
-import { NutritionCard } from '../components/nutrition-card'
-import type { WhoopStats } from '../types'
+import { DayCard } from '../components/day-card'
 
-interface WorkoutHomeProps {
-  onStartWorkout: () => void
-  onStartChat: () => void
-  onViewPast: (id: number) => void
+function todayEastern(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
 }
 
-export function WorkoutHome({ onStartWorkout, onStartChat, onViewPast }: WorkoutHomeProps) {
-  const [recentWorkouts, setRecentWorkouts] = useState<Array<{ id: number; date: string; type: string; status: string }>>([])
-  const [nextWorkout, setNextWorkout] = useState<string | null>(null)
-  const [whoop, setWhoop] = useState<WhoopStats | null>(null)
+interface DayListProps {
+  onSelectDay: (date: string) => void
+}
+
+export function DayList({ onSelectDay }: DayListProps) {
+  const [days, setDays] = useState<Array<{
+    date: string
+    message_count: number
+    workout_type: string | null
+    recovery_zone: string | null
+    calories_total: number
+  }>>([])
 
   useEffect(() => {
-    api.getRecentWorkouts().then(setRecentWorkouts).catch(() => {})
-    api.getNextWorkout().then(r => setNextWorkout(r.summary)).catch(() => {})
-    api.whoopLatest().then(r => setWhoop(r.data)).catch(() => {})
+    api.getChatDays().then(r => setDays(r.days)).catch(() => {})
   }, [])
 
-  return (
-    <div className="workout-home">
-      <div className="workout-home-header">
-        <h2>Ready to train?</h2>
-        <p>Start a workout or chat with Claude about your program.</p>
-      </div>
-      {whoop && (
-        <RecoveryBanner
-          recovery={whoop.recovery_score}
-          hrv={whoop.hrv}
-          sleep={whoop.sleep_score}
-          strain={whoop.strain}
-        />
-      )}
-      <NutritionCard />
-      {nextWorkout && !nextWorkout.startsWith('No program') && (
-        <div className="workout-plan-preview">
-          <span className="workout-plan-label">TODAY'S PLAN</span>
-          <p className="workout-plan-text">{nextWorkout}</p>
-        </div>
-      )}
-      <div className="home-actions">
-        <button className="start-workout-btn" onClick={onStartWorkout}>Start Workout</button>
-        <button className="general-chat-btn" onClick={onStartChat}>Chat with Claude</button>
-      </div>
+  const today = todayEastern()
 
-      {recentWorkouts.length > 0 && (
-        <div className="recent-workouts">
-          <h3 className="recent-title">Recent Sessions</h3>
-          {recentWorkouts.map(w => (
-            <button key={w.id} className={`recent-workout-card ${w.status}`} onClick={() => onViewPast(w.id)}>
-              <span className="recent-date">{w.date}</span>
-              <span className="recent-type">{w.type}</span>
-              <span className="recent-status">{w.status === 'active' ? 'In Progress' : 'Completed'}</span>
-            </button>
-          ))}
-        </div>
+  return (
+    <div className="day-list-screen">
+      <h2 className="day-list-title">Chats</h2>
+      {days.length === 0 && (
+        <p className="placeholder-text">No chat history yet</p>
       )}
+      {days.map(d => (
+        <DayCard
+          key={d.date}
+          date={d.date}
+          workoutType={d.workout_type}
+          recoveryZone={d.recovery_zone}
+          caloriesTotal={d.calories_total}
+          isToday={d.date === today}
+          onClick={() => onSelectDay(d.date)}
+        />
+      ))}
     </div>
   )
 }

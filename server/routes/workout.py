@@ -1,17 +1,18 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from server.database import get_db
 from server.models import Workout, Exercise, Set, WhoopData
-from server.schemas import WorkoutCompleteRequest, WorkoutCompleteResponse, SetLog
-from server.config import settings
+from server.schemas import WorkoutCompleteRequest, WorkoutCompleteResponse, SetLog, CompleteSetRequest
+from server.services.workout_sequencer import complete_set as sequencer_complete_set
+from server.config import settings, today_eastern, TIMEZONE
 
 router = APIRouter()
 
 
 @router.post("/workout/start")
 async def start_workout(data: dict, db: Session = Depends(get_db)):
-    from datetime import date
-    today = date.today().isoformat()
+    today = today_eastern()
     # atomic check-and-create to prevent race conditions
     existing = db.query(Workout).filter_by(date=today, status="active").first()
     if existing:
@@ -36,15 +37,14 @@ async def start_workout(data: dict, db: Session = Depends(get_db)):
 
 @router.get("/workout/next")
 async def get_next_workout(db: Session = Depends(get_db)):
-    from datetime import date
     from server.models import SystemMemory
     memory = db.query(SystemMemory).filter_by(key="training_plan").first()
     if not memory or not memory.content:
         return {"summary": "No program loaded. Tell Claude about your training plan in Chat."}
 
-    today = date.today()
-    day_name = today.strftime("%A")    # "Monday"
-    day_abbrev = today.strftime("%a")  # "Mon"
+    now = datetime.now(TIMEZONE)
+    day_name = now.strftime("%A")
+    day_abbrev = now.strftime("%a")
 
     lines = memory.content.split("\n")
     for line in lines:
@@ -57,7 +57,7 @@ async def get_next_workout(db: Session = Depends(get_db)):
                 return {"summary": clean}
 
     # fallback: match "Day N" based on weekday number (Mon=1, Tue=2, etc.)
-    weekday_num = today.weekday()  # 0=Mon
+    weekday_num = now.weekday()  # 0=Mon
     for line in lines:
         lower = line.lower().strip()
         if f"day {weekday_num + 1}" in lower and len(line.strip()) > 10:
@@ -92,8 +92,7 @@ async def get_recent_workouts(db: Session = Depends(get_db)):
 
 @router.get("/workout/today")
 async def get_today_workout(db: Session = Depends(get_db)):
-    from datetime import date
-    today = date.today().isoformat()
+    today = today_eastern()
     workout = db.query(Workout).filter_by(date=today, status="active").first()
     if not workout:
         return {"status": "no_workout", "exercises": []}
@@ -108,8 +107,7 @@ async def get_today_workout(db: Session = Depends(get_db)):
 
 @router.post("/workout/set")
 async def log_set(set_log: SetLog, db: Session = Depends(get_db)):
-    from datetime import date
-    today = date.today().isoformat()
+    today = today_eastern()
     workout = db.query(Workout).filter_by(date=today, status="active").first()
     if not workout:
         raise HTTPException(status_code=404, detail="no active workout")
@@ -120,6 +118,15 @@ async def log_set(set_log: SetLog, db: Session = Depends(get_db)):
     db.add(new_set)
     db.commit()
     return {"id": new_set.id, "logged": True}
+
+
+@router.post("/workout/complete-set")
+async def complete_set_endpoint(request: CompleteSetRequest, db: Session = Depends(get_db)):
+    result = sequencer_complete_set(
+        db, request.set_id, request.actual_weight, request.actual_reps,
+        request.actual_rpe, request.feel
+    )
+    return result
 
 
 @router.get("/exercise/last/{name}")
