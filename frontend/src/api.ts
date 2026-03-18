@@ -21,7 +21,7 @@ export const api = {
   getLayout: (screen: string) => request<import('./types').Layout>(`/layout?screen=${screen}`),
   getProgram: () => request<{ has_program: boolean; weeks: Array<{ number: number; title: string; days: Array<{ day_of_week: string; type: string; planned: string; note: string; status: string }> }>; progression: Array<{ week: number; weight: number; label: string }>; stats: { total_workouts: number; completed_workouts: number; today: string } }>('/program'),
   getProgress: () => request<import('./types').ProgressData>('/progress'),
-  getProfile: () => request<{ id: number; name: string } | null>('/profile'),
+  getProfile: () => request<{ id: number; name: string; calorie_target: number | null; protein_target: number | null } | null>('/profile'),
   whoopStatus: () => request<{ connected: boolean; oauth_available: boolean; write_enabled: boolean }>('/whoop/status'),
   whoopLogin: (email: string, password: string) => request<{ success: boolean; error?: string }>('/whoop/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   whoopAuthorize: () => request<{ url?: string; error?: string }>('/whoop/authorize'),

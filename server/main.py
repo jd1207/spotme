@@ -14,6 +14,15 @@ def create_app():
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
     Base.metadata.create_all(bind=engine)
 
+    # migrate new columns onto existing tables
+    from sqlalchemy import text, inspect as sa_inspect
+    cols = [c['name'] for c in sa_inspect(engine).get_columns('user_profiles')]
+    with engine.begin() as conn:
+        if 'calorie_target' not in cols:
+            conn.execute(text("ALTER TABLE user_profiles ADD COLUMN calorie_target INTEGER"))
+        if 'protein_target' not in cols:
+            conn.execute(text("ALTER TABLE user_profiles ADD COLUMN protein_target INTEGER"))
+
     from server.routes.chat import router as chat_router
     from server.routes.workout import router as workout_router
     from server.routes.video import router as video_router

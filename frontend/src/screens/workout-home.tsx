@@ -21,6 +21,14 @@ export function WorkoutHome({ onStartWorkout, onStartChat, onViewPast }: Workout
     api.whoopLatest().then(r => setWhoop(r.data)).catch(() => {})
   }, [])
 
+  const thisWeekCount = (() => {
+    const now = new Date()
+    const monday = new Date(now)
+    monday.setDate(now.getDate() - ((now.getDay() + 6) % 7))
+    const mondayStr = monday.toISOString().split('T')[0]
+    return recentWorkouts.filter(w => w.date >= mondayStr && w.status === 'completed').length
+  })()
+
   return (
     <div className="workout-home">
       <div className="workout-home-header">
@@ -36,6 +44,10 @@ export function WorkoutHome({ onStartWorkout, onStartChat, onViewPast }: Workout
         />
       )}
       <NutritionCard />
+      <div className="weekly-summary">
+        <span className="weekly-label">THIS WEEK</span>
+        <span className="weekly-count">{thisWeekCount} workout{thisWeekCount !== 1 ? 's' : ''}</span>
+      </div>
       {nextWorkout && !nextWorkout.startsWith('No program') && (
         <div className="workout-plan-preview">
           <span className="workout-plan-label">TODAY'S PLAN</span>

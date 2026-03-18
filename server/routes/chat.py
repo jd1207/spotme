@@ -61,6 +61,8 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             "equipment": profile.equipment,
             "training_frequency": profile.training_frequency,
             "injuries_notes": profile.injuries_notes,
+            "calorie_target": profile.calorie_target,
+            "protein_target": profile.protein_target,
         }
 
     # whoop — today only
@@ -120,8 +122,8 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     profile_data = result.get("profile")
     if profile_data and isinstance(profile_data, dict):
         if profile:
-            for key in ["name", "goals", "experience_level", "equipment", "training_frequency", "injuries_notes"]:
-                if key in profile_data and profile_data[key]:
+            for key in ["name", "goals", "experience_level", "equipment", "training_frequency", "injuries_notes", "calorie_target", "protein_target"]:
+                if key in profile_data and profile_data[key] is not None:
                     setattr(profile, key, profile_data[key])
         else:
             profile = UserProfile(
@@ -131,6 +133,8 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
                 equipment=profile_data.get("equipment"),
                 training_frequency=profile_data.get("training_frequency"),
                 injuries_notes=profile_data.get("injuries_notes"),
+                calorie_target=profile_data.get("calorie_target"),
+                protein_target=profile_data.get("protein_target"),
             )
             db.add(profile)
 

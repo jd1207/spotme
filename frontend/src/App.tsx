@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Workout } from './screens/workout'
 import { History } from './screens/history'
+import { Diet } from './screens/diet'
 import { Profile } from './screens/profile'
 import { Onboarding } from './components/onboarding'
 import { Intake } from './components/intake'
@@ -8,7 +9,7 @@ import { BottomNav } from './components/bottom-nav'
 import { useOffline } from './hooks/use-offline'
 import { api } from './api'
 
-type Tab = 'workout' | 'program' | 'profile'
+type Tab = 'workout' | 'program' | 'diet' | 'profile'
 
 export default function App() {
   const [onboarded, setOnboarded] = useState(
@@ -56,6 +57,7 @@ export default function App() {
       {tab === 'program' && (
         <History onNavigateWorkout={() => setTab('workout')} />
       )}
+      {tab === 'diet' && <Diet />}
       {tab === 'profile' && (
         <Profile
           onReplayTutorial={() => {

@@ -41,7 +41,7 @@ Always respond with valid JSON:
 - "layout" is optional (UI layout descriptor, usually null)
 - "set_suggestion" is optional — when recommending a specific set, include:
   {"exercise": "Bench Press", "weight": 225, "reps": 5, "basis": "based on last session + green recovery"}
-- "profile" is optional (only when you learn new profile info)
+- "profile" is optional (only when you learn new profile info). Supported fields: name, goals, experience_level, equipment, training_frequency, injuries_notes, calorie_target (int), protein_target (int). When the user mentions daily nutrition targets, set calorie_target and protein_target.
 - "memory_update" is optional (only when training memory should change)
 - "meal" is optional (only when the user describes food they ate)
 
@@ -84,6 +84,10 @@ def assemble_context(program, workout, whoop, history, profile=None, memory=None
             profile_parts.append(f"Frequency: {profile['training_frequency']}")
         if profile.get('injuries_notes'):
             profile_parts.append(f"Limitations: {profile['injuries_notes']}")
+        if profile.get('calorie_target'):
+            profile_parts.append(f"Cal target: {profile['calorie_target']}")
+        if profile.get('protein_target'):
+            profile_parts.append(f"Protein target: {profile['protein_target']}g")
         parts.append("Profile: " + " | ".join(profile_parts))
     else:
         parts.append("NO USER PROFILE YET — ask intake questions.")

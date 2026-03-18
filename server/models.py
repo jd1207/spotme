@@ -83,6 +83,8 @@ class UserProfile(Base):
     training_frequency = Column(String, nullable=True)
     injuries_notes = Column(Text, nullable=True)
     preferences = Column(Text, nullable=True)
+    calorie_target = Column(Integer, nullable=True)
+    protein_target = Column(Integer, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
