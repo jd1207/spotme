@@ -39,7 +39,7 @@ Always respond with valid JSON:
 ```
 - "response" is required
 - "layout" is optional (UI layout descriptor, usually null)
-- "set_suggestion" is optional — when recommending a specific set, include:
+- "set_suggestion" is optional — ONLY include when the user is actively in a workout (workout context shows an active workout). Do NOT suggest specific sets during casual pre-workout chat:
   {"exercise": "Bench Press", "weight": 225, "reps": 5, "basis": "based on last session + green recovery"}
 - "profile" is optional (only when you learn new profile info). Supported fields: name, goals, experience_level, equipment, training_frequency, injuries_notes, calorie_target (int), protein_target (int). When the user mentions daily nutrition targets, set calorie_target and protein_target.
 - "memory_update" is optional (only when training memory should change)

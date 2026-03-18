@@ -29,7 +29,10 @@ export function Workout() {
   const messagesRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (messagesRef.current) messagesRef.current.scrollTop = messagesRef.current.scrollHeight
+    // use setTimeout to scroll after DOM updates
+    setTimeout(() => {
+      if (messagesRef.current) messagesRef.current.scrollTop = messagesRef.current.scrollHeight
+    }, 50)
   }, [messages, thinking])
 
   useEffect(() => {
