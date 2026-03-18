@@ -27,9 +27,27 @@ General chats (workout_id=null) pile into one undifferentiated bucket. No date g
 ```
 date: String, YYYY-MM-DD, Eastern time, not null
 ```
-Migration: backfill existing rows from `created_at` with Eastern timezone conversion. All new messages stamped with `datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")`.
+Migration: backfill existing rows from `created_at` with Eastern timezone conversion. All new messages stamped with `today_eastern()` (see Cross-Cutting: Timezone section).
 
-Eastern timezone is stored as a named constant `TIMEZONE = ZoneInfo("America/New_York")` in a shared location (server/config.py).
+### Timezone: Global date.today() Replacement
+
+**All `date.today().isoformat()` calls across the entire backend must be replaced** with a shared `today_eastern()` helper. This affects:
+- `server/routes/workout.py` (workout date, today filter)
+- `server/routes/meals.py` (meal date, today filter, week range)
+- `server/routes/chat.py` (whoop query, meal totals query, new message date)
+- `server/routes/morning.py` (today check)
+
+The helper lives in `server/config.py`:
+```python
+from zoneinfo import ZoneInfo
+TIMEZONE = ZoneInfo("America/New_York")
+
+def today_eastern() -> str:
+    from datetime import datetime
+    return datetime.now(TIMEZONE).strftime("%Y-%m-%d")
+```
+
+Existing Workout and Meal `date` values may need verification — confirm the Steam Deck system clock matches Eastern or backfill those tables too.
 
 ### New Endpoints
 
@@ -51,13 +69,21 @@ Eastern timezone is stored as a named constant `TIMEZONE = ZoneInfo("America/New
 ```
 Summary is generated server-side from that day's workout data, set history, and meal totals.
 
+`recovery_zone` is computed on-the-fly from `recovery_score` using existing thresholds (GREEN >= 67, YELLOW >= 34, RED < 34). Extract the `_recovery_zone()` helper from `server/routes/morning.py` into a shared utility at `server/utils.py`.
+
 **`GET /api/chat/day/{date}`** — returns all messages for that date, ordered by created_at. Includes messages from all workout_ids that share that date.
 
 ### Chat Route Changes
 
-The existing `POST /api/chat` gets an optional `date` parameter (defaults to today Eastern). Context assembly for historical chats includes a note: `"Note: athlete is reviewing {date} on {today_date}."` so Claude knows it's retrospective.
+The existing `POST /api/chat` gets an optional `date` parameter (defaults to `today_eastern()`). The `ChatRequest` schema in `server/schemas.py` must be updated to include `date: Optional[str] = None`.
 
-All messages for a day are one stream. `workout_id` remains for backend context scoping but is not a frontend grouping mechanism.
+**History query changes:** The current chat route scopes history by `workout_id` (lines 75-80). This must change to scope by `date`:
+```python
+history_query = db.query(Conversation).filter_by(date=request_date).order_by(Conversation.created_at.desc())
+```
+All messages for a day are one stream. `workout_id` is still stored on each message for future reference but is no longer used as a filter in the history query.
+
+Context assembly for historical chats includes a note: `"Note: athlete is reviewing {date} on {today_date}."` so Claude knows it's retrospective.
 
 ### Frontend UX
 
@@ -103,9 +129,12 @@ target_weight: Float, nullable
 target_reps: Integer, nullable
 set_type: String ("warmup" | "working"), nullable
 order: Integer, nullable
+status: String ("pending" | "completed" | "skipped"), nullable
 ```
 
-When a workout starts, planned sets are created with targets, set_type, order, and completed=False. When the user completes a set, actual weight/reps/rpe fill in and completed=True.
+Note: the existing `weight` and `reps` columns are NOT NULL. When planned sets are created, `weight` and `reps` are pre-filled from target values. On completion, they are overwritten with actual values. The existing `completed` boolean is kept for backwards compatibility with existing queries; the new `status` field provides richer state.
+
+The `status` field also handles skipping: "Skip" button sets `status="skipped"` and leaves `completed=False`.
 
 No new tables. Extends the existing Set model within the existing Exercise/Set hierarchy.
 
@@ -117,9 +146,13 @@ Two triggers:
 
 When activated:
 1. Claude generates a `workout_plan` field in its response — ordered list of all sets (warm-up + working) for all exercises
-2. Chat route creates Exercise and Set records with targets and order
+2. Chat route calls `create_workout_from_plan(db, plan)` in a new service module `server/services/workout_sequencer.py` which creates Workout, Exercise, and Set records with targets and order
 3. Response includes `workout_active: true` and the first planned set
 4. Frontend enters workout mode
+
+**Data flow:** Claude returns `workout_plan` → `ClaudeService` extracts it (added to return dict alongside `meal`, `profile`, etc.) → chat route detects `workout_plan` field → calls `workout_sequencer.create_workout_from_plan(db, plan, date)` → service creates Workout + Exercise + Set records → returns the workout_id and first set.
+
+If a `workout_plan` is returned but an active workout already exists for today, the service replaces all pending sets on the existing workout (same logic as mid-workout adjustment). It does not create a duplicate workout.
 
 **Claude's workout_plan response field:**
 ```json
@@ -137,31 +170,50 @@ When activated:
 
 ### Set Completion Flow
 
-**Single API call:** `POST /api/workout/complete-set`
+**New endpoint:** `POST /api/workout/complete-set`
 
-Request: `{ set_id, actual_weight, actual_reps, actual_rpe, feel: "easy"|"solid"|"tough"|"max" }`
+This is a new endpoint that replaces the existing `POST /api/workout/set` for workout-mode usage. The old endpoint remains for backwards compatibility (direct set logging without a plan).
+
+**New Pydantic schema** in `server/schemas.py`:
+```python
+class CompleteSetRequest(BaseModel):
+    set_id: int
+    actual_weight: float
+    actual_reps: int
+    actual_rpe: Optional[float] = None
+    feel: Optional[str] = None  # "easy" | "solid" | "tough" | "max"
+```
+
+**Sequencing logic** lives in `server/services/workout_sequencer.py`:
+- `complete_set(db, set_id, actual_weight, actual_reps, actual_rpe, feel)` — marks set completed, returns next pending set
+- `get_next_set(db, workout_id)` — queries first Set with status="pending" ordered by `order`
+- `replace_pending_sets(db, workout_id, new_plan)` — deletes all status="pending" sets, creates new ones
 
 Response:
 ```json
 {
   "logged_set": { ... },
-  "next_set": { "exercise": "Bench Press", "set_type": "working", "weight": 235, "reps": 6, "set_number": 3, "order": 6 },
+  "next_set": { "id": 7, "exercise": "Bench Press", "set_type": "working", "weight": 235, "reps": 6, "set_number": 3, "order": 6 },
   "progress": { "completed": 5, "total": 18, "current_exercise_progress": "3 of 5" },
   "next_exercise_preview": "DB Flat Press 80x10"
 }
 ```
 
-Claude coaching fires async — coaching message appears in chat when ready, but the set card advances immediately. No waiting for Claude to tell you what's next.
+Claude coaching fires async via `asyncio.create_task()` — coaching message appears in chat when ready, but the set card advances immediately. No waiting for Claude to tell you what's next.
 
 ### Mid-Workout Adjustments
 
-User tells Claude "that felt heavy, drop to 225." Claude responds with coaching text and a `workout_plan` field containing a full replacement sequence for all remaining pending sets. Server replaces all pending Set rows. No surgical patch logic.
+User tells Claude "that felt heavy, drop to 225." Claude responds with coaching text and a `workout_plan` field containing a full replacement sequence for all remaining pending sets. Chat route calls `workout_sequencer.replace_pending_sets(db, workout_id, new_plan)` which:
+1. Runs in a transaction
+2. Only deletes sets with `status="pending"` (never touches completed or skipped sets)
+3. Creates new Set records for the replacement plan
+4. Returns the updated next set
 
-Skip: "Skip" button on set card marks the set as skipped and advances. "Bench is taken" via chat → Claude reorders remaining exercises.
+**Concurrency guard:** The `complete_set` function acquires the Set record with `with_for_update()` before marking it complete. If the set was deleted by a concurrent plan replacement, it returns an error and the frontend re-fetches the current plan state.
 
 ### Set Card UX
 
-The set card is a persistent sticky element above the input bar. It evolves in place — never disappears during a workout.
+The set card is a persistent sticky element above the input bar. It evolves in place — never disappears during a workout. This should be its own component: `frontend/src/components/set-card.tsx`.
 
 **State 1 — Next set:**
 ```
@@ -207,6 +259,10 @@ Feel buttons map to RPE: Easy→6.5, Solid→7.5, Tough→9, Max→10. Stored on
 
 All sets completed or user says "done" → workout marked complete. Claude summarizes the session and updates training memory. Frontend exits workout mode, returns to chat.
 
+### Offline Behavior
+
+The set card should queue set completions in IndexedDB when offline (extending the existing offline-first pattern from `use-offline` hook). Queued completions sync when connectivity returns. The set card advances locally using the cached plan data.
+
 ## 3. Program Tab Drill-Down
 
 ### Problem
@@ -219,7 +275,7 @@ Week → Day. No third level. When a day card expands, all exercises and sets ar
 
 ### Data Source
 
-**Completed days:** Query Set table (which now has target_weight, target_reps, set_type, order). Real logged data with RPE.
+**Completed days:** Query Set table (which now has target_weight, target_reps, set_type, order, status). Real logged data with RPE.
 
 **Upcoming days:** Parse from SystemMemory via program_parser.py. Working set prescription only ("Bench Press — 235 x 6 — 5 sets"). No warm-ups for upcoming days — warm-ups appear when the workout starts (Section 2).
 
@@ -227,7 +283,9 @@ Week → Day. No third level. When a day card expands, all exercises and sets ar
 
 **`GET /api/program/week/{number}`** — returns all days for a week with full set data.
 
-Response includes `source: "logged" | "planned"` per day so the frontend renders appropriately.
+Response includes `source: "logged" | "planned"` per day so the frontend renders appropriately. This supplements the existing `GET /api/program` endpoint (which continues to return the overview structure). The existing endpoint is not replaced.
+
+All set data for a week is fetched in one call when the week accordion opens. Exercise/set rendering is purely client-side after that.
 
 ### Expanded Day Card — Completed
 
@@ -349,9 +407,9 @@ PREVIOUS DAYS
 
 ### Key Behaviors
 
-**"Get meal ideas"** opens chat pre-populated with remaining macro context: "I need 1,350 more calories and 80g protein to hit my targets — suggest a meal."
+**"Get meal ideas"** opens chat (switches to workout/chat tab) pre-populated with remaining macro context: "I need 1,350 more calories and 80g protein to hit my targets — suggest a meal."
 
-**"Fix" button** opens chat pre-populated with: "The [meal description] was actually..." — Claude re-estimates and the old record is replaced.
+**"Fix" button** flow: Frontend calls `DELETE /api/meals/{id}` immediately, then switches to chat tab with pre-populated text: "I need to re-log a meal. The [meal description] was actually..." Claude re-estimates via the standard `meal` response field, creating a new record. This is a two-step process (delete + re-log) rather than an in-place edit, keeping the system simple.
 
 **Previous days** are collapsed by default. Tap to expand — triggers lazy fetch via `GET /api/meals/day/{date}`. Shows that day's meals in the same card format.
 
@@ -359,7 +417,7 @@ PREVIOUS DAYS
 
 ### Endpoints
 
-- `GET /api/meals/today` — unchanged, returns today's meals + totals
+- `GET /api/meals/today` — unchanged, returns today's meals + totals (uses `today_eastern()`)
 - `GET /api/meals/week` — unchanged, returns daily aggregates for trend charts
 - `GET /api/meals/day/{date}` — **new**, returns individual meals for a specific date (lazy load on expand)
 
@@ -382,9 +440,15 @@ Persistent=true
 
 ~6 syncs/day. Conservative for a reverse-engineered API.
 
+### First Daily Chat Sync Trigger
+
+The chat route checks if today's WhoopData exists. If missing, fires a background task: `asyncio.create_task(trigger_whoop_sync(db_factory))`. The chat response proceeds immediately with whatever data is available. The sync result is available for subsequent requests.
+
+The `trigger_whoop_sync` function is a lightweight wrapper that imports Whoop lazily (per CLAUDE.md rules), checks dedup, and calls the existing `sync_whoop_biometrics`. It does not block the chat response.
+
 ### Dedup Logic
 
-Sync job checks last successful sync time (from WhoopData.synced_at). If <3 hours ago, skip. Prevents catch-up storms when Deck wakes from sleep.
+Sync job checks last successful sync time (from `WhoopData.synced_at`). If <3 hours ago, skip. Prevents catch-up storms when Deck wakes from sleep.
 
 ### Entry Point
 
@@ -393,14 +457,23 @@ Replace the one-liner in the service file with a proper CLI command:
 ExecStart=%h/spotme/.venv/bin/python -m server.cli whoop_sync
 ```
 
-The `server/cli.py` module handles logging, dedup check, auth error detection, and graceful failure.
+**New file: `server/cli.py`** — CLI entry point with `whoop_sync` subcommand:
+- Uses `argparse` for subcommand routing
+- Imports `sync_whoop_biometrics` from existing `server/services/whoop_service.py`
+- Checks `WhoopData.synced_at` for dedup (<3 hours → skip)
+- Detects auth errors specifically (HTTP 401/403) and records consecutive failure count
+- Logs to stdout (captured by journald via systemd)
+- Graceful failure: exits 0 even on sync failure (systemd won't spam restarts)
+
+The existing service file one-liner is replaced entirely. The old `deploy/spotme-whoop-sync.service` is updated to use the new entry point.
 
 ### Auth Failure Surfacing
 
 If sync fails due to auth errors 3+ consecutive times:
-- Set a flag in SystemMemory or a new status field
+- Store `whoop_auth_failed: true` in SystemMemory (key="whoop_status")
 - Frontend recovery banner shows "Whoop disconnected — reconnect in Settings" instead of stale recovery data
 - Profile tab Whoop section shows the error state
+- Successful sync clears the flag
 
 ### UI Behavior
 
@@ -408,10 +481,11 @@ If sync fails due to auth errors 3+ consecutive times:
 - **Stale data (>6 hours):** Subtle warning: "Recovery data may be outdated"
 - **Auth failed:** "Whoop disconnected — reconnect in Settings"
 - **Profile tab:** "Auto-syncing every 4 hours · Last: 11:00 AM" with a small "Sync Now" secondary action
-- **First connection:** Immediate sync triggered on Whoop connect flow
+- **First connection:** Immediate sync triggered on Whoop connect flow (existing `POST /api/whoop/login` or `/whoop/authorize` calls sync after successful auth)
 
 ### Installation
 
+The existing `deploy/spotme-whoop-sync.timer` is updated (not supplemented) and installed:
 ```bash
 cp deploy/spotme-whoop-sync.timer ~/.config/systemd/user/
 cp deploy/spotme-whoop-sync.service ~/.config/systemd/user/
@@ -423,24 +497,59 @@ systemctl --user enable --now spotme-whoop-sync.timer
 
 ### Timezone
 
-All date logic uses Eastern time. Constant: `TIMEZONE = ZoneInfo("America/New_York")` in `server/config.py`. Frontend formats dates for display but the date string value is always Eastern-derived.
+All date logic uses Eastern time. Helper function and constant in `server/config.py`:
+```python
+from zoneinfo import ZoneInfo
+TIMEZONE = ZoneInfo("America/New_York")
+
+def today_eastern() -> str:
+    from datetime import datetime
+    return datetime.now(TIMEZONE).strftime("%Y-%m-%d")
+```
+
+**Every `date.today().isoformat()` call in the backend must be replaced with `today_eastern()`.** This includes routes for workouts, meals, chat, morning, and whoop queries. Verify that existing Workout and Meal date values are consistent with Eastern time (Steam Deck system clock).
 
 ### Claude System Prompt Updates
 
-- Add `workout_plan` field documentation to response format
-- Add `items` array to meal field documentation
-- Add `plan_adjustment` note (full replacement of remaining sets)
+- Add `workout_plan` field documentation to response format (ordered array of sets with exercise, set_type, weight, reps)
+- Add `items` array to meal field documentation (list of individual food items)
+- Remove `plan_adjustment` — use full `workout_plan` replacement instead
 - Update profile fields to mention `calorie_target`, `protein_target` (already done)
-- Instruct Claude to consistently set `meal_type`
+- Instruct Claude to consistently set `meal_type` on meal responses
 - Add workout mode instructions: when user starts a workout, generate the full warm-up + working set sequence from training memory
 
 ### Migration
 
-- Conversation: add `date` column, backfill from `created_at` with Eastern conversion
-- Set: add `target_weight`, `target_reps`, `set_type`, `order` columns
-- Meal: add `items` column
-- All nullable, all idempotent ALTER TABLE (same pattern as existing calorie_target migration)
+All migrations use the existing idempotent ALTER TABLE pattern in `server/main.py`:
+
+- **Conversation:** add `date` column (String). Backfill from `created_at` with Eastern conversion.
+- **Set:** add `target_weight` (Float), `target_reps` (Integer), `set_type` (String), `order` (Integer), `status` (String) columns.
+- **Meal:** add `items` column (Text, JSON-serialized array).
+- All nullable. All idempotent.
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `server/services/workout_sequencer.py` | Create workout from plan, complete set, get next set, replace pending sets |
+| `server/cli.py` | CLI entry point for Whoop sync (and future management commands) |
+| `server/utils.py` | Shared utilities: `recovery_zone()` extracted from morning.py |
+| `frontend/src/components/set-card.tsx` | Sticky set card with 3 states (next, feedback, rest) |
 
 ### File Size Constraint
 
-200-line max per component file (per CLAUDE.md). New components will need to be split if they exceed this. The set card (with its 3 states + feedback + timer) will likely need to be its own component file.
+200-line max per component file (per CLAUDE.md). The set card component, diet screen, and workout screen will need careful splitting. The set card is its own component. Diet screen may need a `meal-card.tsx` sub-component.
+
+### Context Token Budget
+
+The existing ~4000 token budget for Claude context may need revision. The workout plan data and richer set history add to context size. Mitigations:
+- Only include the current exercise's recent sets in context, not the full plan
+- Summarize completed sets ("Bench: 5/5 done, avg RPE 8") rather than listing each
+- The workout_plan is a one-time output, not included in every subsequent context
+
+### Offline Behavior
+
+The existing offline-first pattern (IndexedDB + `use-offline` hook) extends to:
+- **Set completions:** Queued in IndexedDB, synced on reconnect. Set card advances locally.
+- **Day chat history:** Cached for the current day. Previous day fetches fail gracefully with "Offline" message.
+- **Meal logging:** Already works offline via the existing queue pattern.
