@@ -93,11 +93,7 @@ function PrevDayCard({ day }: PrevDayCardProps) {
   )
 }
 
-interface DietProps {
-  onNavigateChat?: () => void
-}
-
-export function Diet({ onNavigateChat }: DietProps) {
+export function Diet() {
   const [meals, setMeals] = useState<MealItem[]>([])
   const [totals, setTotals] = useState<Totals | null>(null)
   const [weekData, setWeekData] = useState<TrendPoint[]>([])
@@ -160,8 +156,7 @@ export function Diet({ onNavigateChat }: DietProps) {
             </span>
           </div>
         )}
-        <button className="diet-cta" onClick={() => onNavigateChat?.()}>Get meal ideas →</button>
-        {!targets.calories && !targets.protein && (
+                {!targets.calories && !targets.protein && (
           <p className="diet-targets-hint">Tell Claude your daily targets to see progress bars</p>
         )}
       </div>
