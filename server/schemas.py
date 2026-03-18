@@ -17,6 +17,14 @@ class SetLog(BaseModel):
     rpe: float | None = None
     notes: str | None = None
 
+class CompleteSetRequest(BaseModel):
+    set_id: int
+    actual_weight: float
+    actual_reps: int
+    actual_rpe: float | None = None
+    feel: str | None = None
+
+
 class WorkoutCompleteRequest(BaseModel):
     workout_id: int
 

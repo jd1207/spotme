@@ -3,7 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from server.database import get_db
 from server.models import Workout, Exercise, Set, WhoopData
-from server.schemas import WorkoutCompleteRequest, WorkoutCompleteResponse, SetLog
+from server.schemas import WorkoutCompleteRequest, WorkoutCompleteResponse, SetLog, CompleteSetRequest
+from server.services.workout_sequencer import complete_set as sequencer_complete_set
 from server.config import settings, today_eastern, TIMEZONE
 
 router = APIRouter()
@@ -117,6 +118,15 @@ async def log_set(set_log: SetLog, db: Session = Depends(get_db)):
     db.add(new_set)
     db.commit()
     return {"id": new_set.id, "logged": True}
+
+
+@router.post("/workout/complete-set")
+async def complete_set_endpoint(request: CompleteSetRequest, db: Session = Depends(get_db)):
+    result = sequencer_complete_set(
+        db, request.set_id, request.actual_weight, request.actual_reps,
+        request.actual_rpe, request.feel
+    )
+    return result
 
 
 @router.get("/exercise/last/{name}")
