@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -12,6 +13,9 @@ router = APIRouter()
 @router.post("/meals")
 async def log_meal(data: dict, db: Session = Depends(get_db)):
     """quick-add a meal with macros"""
+    items_raw = data.get("items")
+    items_json = json.dumps(items_raw) if items_raw else None
+
     meal = Meal(
         date=data.get("date", today_eastern()),
         description=data.get("description", ""),
@@ -20,6 +24,7 @@ async def log_meal(data: dict, db: Session = Depends(get_db)):
         carbs=data.get("carbs"),
         fat=data.get("fat"),
         meal_type=data.get("meal_type"),
+        items=items_json,
     )
     db.add(meal)
     db.commit()
@@ -46,6 +51,42 @@ async def get_today_meals(db: Session = Depends(get_db)):
                 "carbs": m.carbs,
                 "fat": m.fat,
                 "meal_type": m.meal_type,
+                "items": json.loads(m.items) if m.items else None,
+                "created_at": str(m.created_at) if m.created_at else None,
+            }
+            for m in meals
+        ],
+        "totals": {
+            "calories": total_cal,
+            "protein": round(total_protein, 1),
+            "carbs": round(total_carbs, 1),
+            "fat": round(total_fat, 1),
+        },
+    }
+
+
+@router.get("/meals/day/{meal_date}")
+async def get_day_meals(meal_date: str, db: Session = Depends(get_db)):
+    """get all meals for a specific date (lazy load for previous days)"""
+    meals = db.query(Meal).filter_by(date=meal_date).order_by(Meal.created_at).all()
+    total_cal = sum(m.calories or 0 for m in meals)
+    total_protein = sum(m.protein or 0 for m in meals)
+    total_carbs = sum(m.carbs or 0 for m in meals)
+    total_fat = sum(m.fat or 0 for m in meals)
+
+    return {
+        "date": meal_date,
+        "meals": [
+            {
+                "id": m.id,
+                "description": m.description,
+                "calories": m.calories,
+                "protein": m.protein,
+                "carbs": m.carbs,
+                "fat": m.fat,
+                "meal_type": m.meal_type,
+                "items": json.loads(m.items) if m.items else None,
+                "created_at": str(m.created_at) if m.created_at else None,
             }
             for m in meals
         ],
