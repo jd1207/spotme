@@ -3,6 +3,7 @@ from pydantic import BaseModel
 class ChatRequest(BaseModel):
     message: str
     workout_id: int | None = None
+    date: str | None = None
 
 class ChatResponse(BaseModel):
     response: str

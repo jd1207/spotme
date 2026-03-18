@@ -9,6 +9,7 @@ from server.models import (
     Conversation, UserProfile, SystemMemory, Meal,
 )
 from server.config import settings, today_eastern
+from server.utils import recovery_zone
 
 router = APIRouter()
 
@@ -49,6 +50,8 @@ def _get_recent_sets(db: Session) -> list[dict]:
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, db: Session = Depends(get_db)):
+    request_date = request.date or today_eastern()
+
     # profile
     profile = db.query(UserProfile).first()
     profile_dict = None
@@ -70,12 +73,12 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     # recent set history for context
     set_history = _get_recent_sets(db)
 
-    # conversation history scoped to this workout (or general if no workout_id)
-    history_query = db.query(Conversation).order_by(Conversation.created_at.desc())
-    if request.workout_id:
-        history_query = history_query.filter_by(workout_id=request.workout_id)
-    else:
-        history_query = history_query.filter_by(workout_id=None)
+    # conversation history scoped to this date
+    history_query = (
+        db.query(Conversation)
+        .filter_by(date=request_date)
+        .order_by(Conversation.created_at.desc())
+    )
     history = history_query.limit(10).all()
     history_dicts = [{"role": h.role, "content": h.content} for h in reversed(history)]
 
@@ -114,6 +117,9 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         }
 
     context = assemble_context(None, None, whoop_dict, history_dicts, profile_dict, memory_text, workout_context, set_history=set_history, meal_totals=meal_totals)
+    today = today_eastern()
+    if request_date != today:
+        context += f"\n\nNote: athlete is reviewing {request_date} on {today}."
     service = ClaudeService()
     result = await service.chat(request.message, context)
 
@@ -149,7 +155,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     meal_data = result.get("meal")
     if meal_data and isinstance(meal_data, dict):
         db.add(Meal(
-            date=today_eastern(),
+            date=request_date,
             description=meal_data.get("description", ""),
             calories=meal_data.get("calories"),
             protein=meal_data.get("protein"),
@@ -159,8 +165,8 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         ))
 
     # save messages
-    db.add(Conversation(role="user", content=request.message, context_type="chat", workout_id=request.workout_id))
-    db.add(Conversation(role="assistant", content=result["response"], context_type="chat", workout_id=request.workout_id))
+    db.add(Conversation(role="user", content=request.message, context_type="chat", workout_id=request.workout_id, date=request_date))
+    db.add(Conversation(role="assistant", content=result["response"], context_type="chat", workout_id=request.workout_id, date=request_date))
     db.commit()
     return ChatResponse(response=result["response"], layout=result.get("layout"), set_suggestion=result.get("set_suggestion"))
 
@@ -169,6 +175,58 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
 async def get_workout_chat(workout_id: int, db: Session = Depends(get_db)):
     messages = db.query(Conversation).filter_by(workout_id=workout_id).order_by(Conversation.created_at).all()
     return [{"role": m.role, "content": m.content, "created_at": str(m.created_at)} for m in messages]
+
+
+@router.get("/chat/days")
+async def get_chat_days(db: Session = Depends(get_db)):
+    """return list of dates with chat history and summary stats"""
+    date_counts = (
+        db.query(Conversation.date, sqlfunc.count(Conversation.id).label("count"))
+        .filter(Conversation.date.isnot(None))
+        .group_by(Conversation.date)
+        .order_by(Conversation.date.desc())
+        .limit(30)
+        .all()
+    )
+    days = []
+    for row in date_counts:
+        d = row.date
+        workout = db.query(Workout).filter_by(date=d).first()
+        whoop = db.query(WhoopData).filter_by(date=d).first()
+        meal_totals = db.query(sqlfunc.sum(Meal.calories)).filter(Meal.date == d).scalar()
+        summary_parts = []
+        if workout:
+            summary_parts.append(workout.type)
+        if meal_totals:
+            summary_parts.append(f"{meal_totals} cal")
+        summary = " · ".join(summary_parts) if summary_parts else "No activity"
+        days.append({
+            "date": d,
+            "message_count": row.count,
+            "workout_type": workout.type if workout else None,
+            "recovery_score": whoop.recovery_score if whoop else None,
+            "recovery_zone": recovery_zone(whoop.recovery_score) if whoop else None,
+            "calories_total": meal_totals or 0,
+            "summary": summary,
+        })
+    return {"days": days}
+
+
+@router.get("/chat/day/{chat_date}")
+async def get_chat_day(chat_date: str, db: Session = Depends(get_db)):
+    """return all messages for a specific date"""
+    messages = (
+        db.query(Conversation)
+        .filter_by(date=chat_date)
+        .order_by(Conversation.created_at)
+        .all()
+    )
+    return {
+        "messages": [
+            {"role": m.role, "content": m.content, "created_at": str(m.created_at)}
+            for m in messages
+        ]
+    }
 
 
 @router.post("/intake")
