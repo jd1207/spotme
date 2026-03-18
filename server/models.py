@@ -40,6 +40,11 @@ class Set(Base):
     rpe = Column(Float, nullable=True)
     completed = Column(Boolean, default=False)
     notes = Column(Text, nullable=True)
+    target_weight = Column(Float, nullable=True)
+    target_reps = Column(Integer, nullable=True)
+    set_type = Column(String, nullable=True)
+    order = Column(Integer, nullable=True)
+    status = Column(String, nullable=True)
 
 class WhoopData(Base):
     __tablename__ = "whoop_data"
@@ -71,6 +76,7 @@ class Conversation(Base):
     role = Column(String, nullable=False)
     content = Column(Text, nullable=False)
     context_type = Column(String, default="chat")
+    date = Column(String, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
 class UserProfile(Base):
@@ -127,4 +133,5 @@ class Meal(Base):
     carbs = Column(Float, nullable=True)
     fat = Column(Float, nullable=True)
     meal_type = Column(String, nullable=True)
+    items = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())

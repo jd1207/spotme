@@ -23,6 +23,39 @@ def create_app():
         if 'protein_target' not in cols:
             conn.execute(text("ALTER TABLE user_profiles ADD COLUMN protein_target INTEGER"))
 
+    # conversation date column
+    conv_cols = [c['name'] for c in sa_inspect(engine).get_columns('conversations')]
+    with engine.begin() as conn:
+        if 'date' not in conv_cols:
+            conn.execute(text("ALTER TABLE conversations ADD COLUMN date TEXT"))
+
+    # set columns for workout sequencing
+    set_cols = [c['name'] for c in sa_inspect(engine).get_columns('sets')]
+    with engine.begin() as conn:
+        if 'target_weight' not in set_cols:
+            conn.execute(text("ALTER TABLE sets ADD COLUMN target_weight REAL"))
+        if 'target_reps' not in set_cols:
+            conn.execute(text("ALTER TABLE sets ADD COLUMN target_reps INTEGER"))
+        if 'set_type' not in set_cols:
+            conn.execute(text("ALTER TABLE sets ADD COLUMN set_type TEXT"))
+        if 'order' not in set_cols:
+            conn.execute(text('ALTER TABLE sets ADD COLUMN "order" INTEGER'))
+        if 'status' not in set_cols:
+            conn.execute(text("ALTER TABLE sets ADD COLUMN status TEXT"))
+
+    # meal items column
+    meal_cols = [c['name'] for c in sa_inspect(engine).get_columns('meals')]
+    with engine.begin() as conn:
+        if 'items' not in meal_cols:
+            conn.execute(text("ALTER TABLE meals ADD COLUMN items TEXT"))
+
+    # backfill conversation dates from created_at
+    with engine.begin() as conn:
+        conn.execute(text("""
+            UPDATE conversations SET date = substr(created_at, 1, 10)
+            WHERE date IS NULL AND created_at IS NOT NULL
+        """))
+
     from server.routes.chat import router as chat_router
     from server.routes.workout import router as workout_router
     from server.routes.video import router as video_router
