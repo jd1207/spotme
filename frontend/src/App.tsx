@@ -57,7 +57,7 @@ export default function App() {
       {tab === 'program' && (
         <History onNavigateWorkout={() => setTab('workout')} />
       )}
-      {tab === 'diet' && <Diet />}
+      {tab === 'diet' && <Diet onNavigateChat={() => setTab('workout')} />}
       {tab === 'profile' && (
         <Profile
           onReplayTutorial={() => {
