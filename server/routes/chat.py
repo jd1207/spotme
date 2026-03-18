@@ -1,3 +1,4 @@
+import asyncio
 import json as json_lib
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -16,6 +17,34 @@ from server.utils import recovery_zone
 router = APIRouter()
 
 MEMORY_KEY = "training_plan"
+
+
+def _maybe_trigger_whoop_sync(db: Session):
+    """fire background whoop sync if today's data is missing"""
+    today = today_eastern()
+    has_today = db.query(WhoopData).filter_by(date=today).first()
+    if has_today:
+        return
+    if not settings.whoop_access_token:
+        return
+    async def _do_sync():
+        try:
+            from server.services.whoop_service import create_whoop_client, sync_whoop_biometrics
+            from server.database import SessionLocal
+            sync_db = SessionLocal()
+            try:
+                client = create_whoop_client()
+                await sync_whoop_biometrics(sync_db, client)
+            finally:
+                sync_db.close()
+        except Exception:
+            pass  # sync failures are non-blocking
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(_do_sync())
+    except RuntimeError:
+        pass  # no event loop available
 
 
 def _get_today_whoop(db: Session) -> dict | None:
@@ -53,6 +82,9 @@ def _get_recent_sets(db: Session) -> list[dict]:
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     request_date = request.date or today_eastern()
+
+    # trigger whoop sync if today's data is missing
+    _maybe_trigger_whoop_sync(db)
 
     # profile
     profile = db.query(UserProfile).first()
