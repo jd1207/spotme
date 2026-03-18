@@ -1,8 +1,10 @@
+import json as json_lib
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from server.database import get_db
 from server.schemas import ChatRequest, ChatResponse
 from server.services.claude_service import ClaudeService, assemble_context
+from server.services.workout_sequencer import create_workout_from_plan, get_next_set
 from sqlalchemy import func as sqlfunc
 from server.models import (
     Program, Workout, Exercise, Set, WhoopData,
@@ -154,6 +156,9 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     # auto-save meal if claude estimated macros
     meal_data = result.get("meal")
     if meal_data and isinstance(meal_data, dict):
+        items_json = None
+        if meal_data.get("items"):
+            items_json = json_lib.dumps(meal_data["items"])
         db.add(Meal(
             date=request_date,
             description=meal_data.get("description", ""),
@@ -162,13 +167,32 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             carbs=meal_data.get("carbs"),
             fat=meal_data.get("fat"),
             meal_type=meal_data.get("meal_type"),
+            items=items_json,
         ))
+
+    # auto-create/update workout from plan
+    workout_plan = result.get("workout_plan")
+    workout_active = False
+    current_set = None
+    active_workout_id = None
+    if workout_plan and isinstance(workout_plan, list) and len(workout_plan) > 0:
+        plan_result = create_workout_from_plan(db, workout_plan, request_date)
+        active_workout_id = plan_result["workout_id"]
+        current_set = plan_result["first_set"]
+        workout_active = True
 
     # save messages
     db.add(Conversation(role="user", content=request.message, context_type="chat", workout_id=request.workout_id, date=request_date))
     db.add(Conversation(role="assistant", content=result["response"], context_type="chat", workout_id=request.workout_id, date=request_date))
     db.commit()
-    return ChatResponse(response=result["response"], layout=result.get("layout"), set_suggestion=result.get("set_suggestion"))
+    return ChatResponse(
+        response=result["response"],
+        layout=result.get("layout"),
+        set_suggestion=result.get("set_suggestion"),
+        workout_active=workout_active,
+        current_set=current_set,
+        workout_id=active_workout_id,
+    )
 
 
 @router.get("/chat/history/{workout_id}")

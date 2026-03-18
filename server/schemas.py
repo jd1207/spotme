@@ -9,6 +9,9 @@ class ChatResponse(BaseModel):
     response: str
     layout: dict | None = None
     set_suggestion: dict | None = None
+    workout_active: bool = False
+    current_set: dict | None = None
+    workout_id: int | None = None
 
 class SetLog(BaseModel):
     exercise_name: str
