@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -491,6 +491,72 @@ def test_compute_journal_state(db):
     assert state["alcohol"] is True
     assert state["late_meal"] is True
     assert state["protein"] == 65
+
+
+@pytest.mark.asyncio
+async def test_sync_backfills_missing_days(db):
+    """sync fetches from last synced date when days are missing."""
+    from server.services.whoop_service import sync_whoop_biometrics
+    from server.config import TIMEZONE
+
+    # simulate data from 4 days ago — gap of 3 days
+    four_days_ago = (datetime.now(TIMEZONE) - timedelta(days=4)).strftime("%Y-%m-%d")
+    db.add(WhoopData(date=four_days_ago, recovery_score=70.0, hrv=55.0, resting_hr=58))
+    db.commit()
+
+    mock_client = AsyncMock()
+    mock_client.get_recovery.return_value = []
+    mock_client.get_sleep.return_value = []
+    mock_client.get_cycles.return_value = []
+
+    with patch("server.services.whoop_service.get_whoop_client") as mock_factory:
+        mock_factory.return_value = mock_client
+        await sync_whoop_biometrics(db, force=True)
+
+    # should have called API with start 5 days back (days_behind=4, start_from=5)
+    call_args = mock_client.get_recovery.call_args
+    start_arg = call_args.kwargs.get("start") or call_args.args[0]
+    five_days_ago = (datetime.now(TIMEZONE) - timedelta(days=5)).strftime("%Y-%m-%d")
+    assert five_days_ago in start_arg
+
+
+@pytest.mark.asyncio
+async def test_sync_empty_db_fetches_yesterday(db):
+    """with no existing data, sync fetches from yesterday."""
+    from server.services.whoop_service import sync_whoop_biometrics
+    from server.config import TIMEZONE
+
+    mock_client = AsyncMock()
+    mock_client.get_recovery.return_value = []
+    mock_client.get_sleep.return_value = []
+    mock_client.get_cycles.return_value = []
+
+    with patch("server.services.whoop_service.get_whoop_client") as mock_factory:
+        mock_factory.return_value = mock_client
+        await sync_whoop_biometrics(db, force=True)
+
+    call_args = mock_client.get_recovery.call_args
+    start_arg = call_args.kwargs.get("start") or call_args.args[0]
+    yesterday = (datetime.now(TIMEZONE) - timedelta(days=1)).strftime("%Y-%m-%d")
+    assert yesterday in start_arg
+
+
+@pytest.mark.asyncio
+async def test_token_refresh_callback_is_async(db):
+    """persist_refreshed_tokens callback must be awaitable."""
+    from server.models import WhoopToken
+    from server.services.whoop_service import get_whoop_client
+    import inspect
+
+    db.add(WhoopToken(
+        access_token="test", refresh_token="test",
+        expires_at=datetime.utcnow() + timedelta(hours=1),
+    ))
+    db.commit()
+
+    client = get_whoop_client(db)
+    assert client._on_token_refresh is not None
+    assert inspect.iscoroutinefunction(client._on_token_refresh)
 
 
 def test_v04_schema_columns(db):
