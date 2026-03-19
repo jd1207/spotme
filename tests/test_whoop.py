@@ -464,6 +464,33 @@ async def test_populate_exercise_catalog(db):
     assert bench.name == "Bench Press"
 
 
+def test_compute_journal_state(db):
+    """Journal signals computed from meals."""
+    from server.models import Meal
+    from datetime import datetime
+
+    db.add(Meal(
+        date="2026-03-18", description="chicken and coffee",
+        calories=500, protein=45,
+        journal_signals='{"caffeine": 1, "alcohol": false}',
+        created_at=datetime(2026, 3, 18, 12, 0),
+    ))
+    db.add(Meal(
+        date="2026-03-18", description="beer and pizza",
+        calories=800, protein=20,
+        journal_signals='{"caffeine": 0, "alcohol": true}',
+        created_at=datetime(2026, 3, 18, 21, 0),
+    ))
+    db.commit()
+
+    from server.services.whoop_service import compute_journal_state
+    state = compute_journal_state(db, "2026-03-18")
+    assert state["caffeine"] == 1
+    assert state["alcohol"] is True
+    assert state["late_meal"] is True
+    assert state["protein"] == 65
+
+
 def test_v04_schema_columns(db):
     """verify v0.4 columns exist on models"""
     ex = Exercise(name="test", whoop_exercise_id="BENCHPRESS_BARBELL", order=1)

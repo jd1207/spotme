@@ -191,6 +191,9 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         items_json = None
         if meal_data.get("items"):
             items_json = json_lib.dumps(meal_data["items"])
+        journal_signals = None
+        if meal_data.get("journal_signals"):
+            journal_signals = json_lib.dumps(meal_data["journal_signals"])
         db.add(Meal(
             date=request_date,
             description=meal_data.get("description", ""),
@@ -200,6 +203,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             fat=meal_data.get("fat"),
             meal_type=meal_data.get("meal_type"),
             items=items_json,
+            journal_signals=journal_signals,
         ))
 
     # auto-create/update workout from plan
@@ -217,6 +221,16 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     db.add(Conversation(role="user", content=request.message, context_type="chat", workout_id=request.workout_id, date=request_date))
     db.add(Conversation(role="assistant", content=result["response"], context_type="chat", workout_id=request.workout_id, date=request_date))
     db.commit()
+
+    # sync journal to whoop if a meal was logged
+    if meal_data and isinstance(meal_data, dict):
+        from server.models import WhoopToken
+        if db.query(WhoopToken).first():
+            try:
+                from server.services.whoop_service import sync_journal_to_whoop
+                asyncio.ensure_future(sync_journal_to_whoop(db, request_date))
+            except Exception:
+                pass
     return ChatResponse(
         response=result["response"],
         layout=result.get("layout"),

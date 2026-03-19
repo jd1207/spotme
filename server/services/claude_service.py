@@ -93,6 +93,13 @@ When tracking a meal, also include an "items" array listing individual food item
 {"description": "chicken and rice", "items": ["200g chicken breast", "Cup of white rice", "Steamed broccoli"], "calories": 650, "protein": 55, "carbs": 60, "fat": 12, "meal_type": "lunch"}
 Always set meal_type to one of: breakfast, lunch, dinner, snack.
 
+When parsing a meal, also extract journal signals and include in your response:
+"journal_signals": {"caffeine": <count>, "alcohol": <bool>}
+- Count caffeinated drinks (coffee, espresso, latte, tea, energy drink, pre-workout)
+- "decaf" = caffeine 0, "coffee with Mike" = caffeine 1
+- Flag alcohol (beer, wine, cocktail, spirits, hard seltzer)
+- "virgin mojito" = alcohol false
+
 Be specific about your estimates. If the user just says "I had chicken and rice", ask for approximate portions. Common estimates:
 - Chicken breast 200g: 330 cal, 62g protein, 0g carbs, 7g fat
 - Cup of white rice: 200 cal, 4g protein, 45g carbs, 0g fat

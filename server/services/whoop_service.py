@@ -248,12 +248,72 @@ async def populate_exercise_catalog(db):
     db.commit()
 
 
-def _queue_failed_sync(db: Session, workout_id: int, date: str, error: Exception):
+def compute_journal_state(db, date_str):
+    """compute accumulated journal signals from all meals on a date."""
+    from server.models import Meal
+    meals = db.query(Meal).filter(Meal.date == date_str).all()
+    caffeine = 0
+    alcohol = False
+    late_meal = False
+    protein = 0
+
+    for meal in meals:
+        if meal.journal_signals:
+            signals = json.loads(meal.journal_signals) if isinstance(meal.journal_signals, str) else meal.journal_signals
+            caffeine += signals.get("caffeine", 0)
+            if signals.get("alcohol", False):
+                alcohol = True
+        if meal.created_at and meal.created_at.hour >= 20:
+            late_meal = True
+        protein += meal.protein or 0
+
+    return {"caffeine": caffeine, "alcohol": alcohol, "late_meal": late_meal, "protein": int(protein)}
+
+
+async def sync_journal_to_whoop(db, date_str):
+    """sync accumulated journal signals to whoop."""
+    try:
+        from whoop import JournalInput
+    except ImportError:
+        return {"synced": False, "error": "whoop-write-api not installed"}
+
+    state = compute_journal_state(db, date_str)
+    journal_inputs = []
+
+    if state["caffeine"] > 0:
+        journal_inputs.append(JournalInput(
+            behavior_tracker_id=2, answered_yes=True,
+            magnitude_input_value=state["caffeine"],
+        ))
+    journal_inputs.append(JournalInput(
+        behavior_tracker_id=1, answered_yes=state["alcohol"],
+    ))
+    if state["late_meal"]:
+        journal_inputs.append(JournalInput(
+            behavior_tracker_id=6, answered_yes=True,
+        ))
+    if state["protein"] > 0:
+        journal_inputs.append(JournalInput(
+            behavior_tracker_id=89, answered_yes=True,
+            magnitude_input_value=state["protein"],
+        ))
+
+    try:
+        client = get_whoop_client(db)
+        await client.log_journal(date_str, journal_inputs)
+        return {"synced": True}
+    except Exception as e:
+        _queue_failed_sync(db, None, date_str, e, sync_type="journal")
+        return {"synced": False, "error": str(e), "queued": True}
+
+
+def _queue_failed_sync(db: Session, workout_id: int, date: str, error: Exception, sync_type: str = "workout"):
     db.add(WhoopSyncQueue(
         workout_id=workout_id,
         payload=json.dumps({"date": date}),
         status="pending",
         last_error=str(error),
+        sync_type=sync_type,
     ))
     db.commit()
-    logger.info("queued failed whoop sync for workout %d", workout_id)
+    logger.info("queued failed whoop sync for workout %s", workout_id)
