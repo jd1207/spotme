@@ -163,9 +163,8 @@ async def complete_workout(request: WorkoutCompleteRequest, db: Session = Depend
     token = db.query(WhoopToken).first()
     if token:
         try:
-            from server.services.whoop_service import get_whoop_client, push_workout_to_whoop
-            client = get_whoop_client(db)
-            result = await push_workout_to_whoop(db, client, workout.id)
+            from server.services.whoop_service import push_workout_to_whoop
+            result = await push_workout_to_whoop(db, workout.id)
             whoop_synced = result.get("synced", False)
             if not whoop_synced:
                 whoop_error = result.get("error", "unknown error")

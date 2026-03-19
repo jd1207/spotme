@@ -88,43 +88,52 @@ async def sync_whoop_biometrics(db: Session, whoop_client):
     return result
 
 
-async def push_workout_to_whoop(db: Session, whoop_client, workout_id: int):
-    from whoop import WorkoutWrite, ExerciseWrite, WhoopAPIError
+async def push_workout_to_whoop(db: Session, workout_id: int):
+    """sync a completed workout to whoop with detailed exercises."""
+    try:
+        from whoop import DetailedExercise, ExerciseSet
+    except ImportError:
+        return {"synced": False, "error": "whoop-write-api not installed"}
 
     workout = db.query(Workout).filter_by(id=workout_id).first()
     if not workout:
         return {"synced": False, "error": "workout not found"}
 
     exercises = db.query(Exercise).filter_by(workout_id=workout_id).all()
-    exercise_writes = []
+    whoop_exercises = []
     for ex in exercises:
-        sets = db.query(Set).filter_by(exercise_id=ex.id, completed=True).all()
-        if sets:
-            exercise_writes.append(ExerciseWrite(
-                name=ex.name,
-                sets=len(sets),
-                reps=sets[0].reps,
-                weight=sets[0].weight,
-            ))
-
-    # use actual duration if available, default to 1 hour
-    duration_mins = workout.duration or 60
-    start_ts = f"{workout.date}T12:00:00.000Z"
-    end_hour = 12 + (duration_mins // 60)
-    end_min = duration_mins % 60
-    end_ts = f"{workout.date}T{end_hour:02d}:{end_min:02d}:00.000Z"
-
-    whoop_workout = WorkoutWrite(
-        sport_id=1,
-        start=start_ts,
-        end=end_ts,
-        exercises=exercise_writes,
-    )
+        completed_sets = db.query(Set).filter_by(
+            exercise_id=ex.id, completed=True
+        ).all()
+        if not completed_sets:
+            continue
+        whoop_exercises.append(DetailedExercise(
+            exercise_id=ex.whoop_exercise_id or ex.name.upper().replace(" ", "_"),
+            name=ex.name,
+            sets=[ExerciseSet(reps=s.reps, weight=s.weight) for s in completed_sets],
+        ))
 
     try:
-        result = await whoop_client.log_workout(whoop_workout)
-        return {"synced": True, "activity_id": result.activity_id}
-    except WhoopAPIError as e:
+        from server.config import TIMEZONE
+        from datetime import timedelta
+        end = datetime.now(TIMEZONE)
+        duration = workout.duration or 60
+        start = end - timedelta(minutes=duration)
+
+        client = get_whoop_client(db)
+        activity = await client.create_activity(
+            "weightlifting",
+            start=start.isoformat(),
+            end=end.isoformat(),
+        )
+
+        if whoop_exercises:
+            await client.link_exercises_detailed(activity.id, whoop_exercises)
+
+        workout.whoop_activity_id = activity.id
+        db.commit()
+        return {"synced": True, "activity_id": activity.id}
+    except Exception as e:
         _queue_failed_sync(db, workout_id, workout.date, e)
         return {"synced": False, "error": str(e), "queued": True}
 

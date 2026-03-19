@@ -145,34 +145,35 @@ async def test_sync_biometrics_skips_duplicates(db):
 @pytest.mark.asyncio
 async def test_push_workout_happy_path(seeded_db):
     from server.services.whoop_service import push_workout_to_whoop
-    from whoop import WorkoutResult
 
-    client = AsyncMock()
-    client.log_workout.return_value = WorkoutResult(activity_id=12345, exercises_linked=True)
+    mock_activity = MagicMock()
+    mock_activity.id = 12345
+
+    mock_client = AsyncMock()
+    mock_client.create_activity.return_value = mock_activity
 
     workout = seeded_db.query(Workout).first()
-    result = await push_workout_to_whoop(seeded_db, client, workout.id)
+    with patch("server.services.whoop_service.get_whoop_client") as mock_factory:
+        mock_factory.return_value = mock_client
+        result = await push_workout_to_whoop(seeded_db, workout.id)
 
     assert result["synced"] is True
     assert result["activity_id"] == 12345
-    client.log_workout.assert_called_once()
-
-    # verify timestamps use duration (45 min from noon)
-    call_args = client.log_workout.call_args[0][0]
-    assert call_args.start == "2026-03-16T12:00:00.000Z"
-    assert call_args.end == "2026-03-16T12:45:00.000Z"
+    mock_client.create_activity.assert_called_once()
+    mock_client.link_exercises_detailed.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_push_workout_queues_on_failure(seeded_db):
     from server.services.whoop_service import push_workout_to_whoop
-    from whoop import WhoopAPIError
 
-    client = AsyncMock()
-    client.log_workout.side_effect = WhoopAPIError("server error", status_code=500)
+    mock_client = AsyncMock()
+    mock_client.create_activity.side_effect = Exception("server error")
 
     workout = seeded_db.query(Workout).first()
-    result = await push_workout_to_whoop(seeded_db, client, workout.id)
+    with patch("server.services.whoop_service.get_whoop_client") as mock_factory:
+        mock_factory.return_value = mock_client
+        result = await push_workout_to_whoop(seeded_db, workout.id)
 
     assert result["synced"] is False
     assert result["queued"] is True
@@ -187,8 +188,7 @@ async def test_push_workout_queues_on_failure(seeded_db):
 async def test_push_workout_not_found(db):
     from server.services.whoop_service import push_workout_to_whoop
 
-    client = AsyncMock()
-    result = await push_workout_to_whoop(db, client, 9999)
+    result = await push_workout_to_whoop(db, 9999)
     assert result["synced"] is False
     assert "not found" in result["error"]
 
