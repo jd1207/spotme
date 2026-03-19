@@ -43,11 +43,29 @@ def create_app():
         if 'status' not in set_cols:
             conn.execute(text("ALTER TABLE sets ADD COLUMN status TEXT"))
 
-    # meal items column
+    # meal columns
     meal_cols = [c['name'] for c in sa_inspect(engine).get_columns('meals')]
     with engine.begin() as conn:
         if 'items' not in meal_cols:
             conn.execute(text("ALTER TABLE meals ADD COLUMN items TEXT"))
+        if 'journal_signals' not in meal_cols:
+            conn.execute(text("ALTER TABLE meals ADD COLUMN journal_signals TEXT"))
+
+    # whoop v0.4 columns
+    workout_cols = [c['name'] for c in sa_inspect(engine).get_columns('workouts')]
+    with engine.begin() as conn:
+        if 'whoop_activity_id' not in workout_cols:
+            conn.execute(text("ALTER TABLE workouts ADD COLUMN whoop_activity_id VARCHAR"))
+
+    exercise_cols = [c['name'] for c in sa_inspect(engine).get_columns('exercises')]
+    with engine.begin() as conn:
+        if 'whoop_exercise_id' not in exercise_cols:
+            conn.execute(text("ALTER TABLE exercises ADD COLUMN whoop_exercise_id VARCHAR"))
+
+    sync_cols = [c['name'] for c in sa_inspect(engine).get_columns('whoop_sync_queue')]
+    with engine.begin() as conn:
+        if 'sync_type' not in sync_cols:
+            conn.execute(text("ALTER TABLE whoop_sync_queue ADD COLUMN sync_type VARCHAR DEFAULT 'workout'"))
 
     # backfill conversation dates from created_at
     with engine.begin() as conn:
