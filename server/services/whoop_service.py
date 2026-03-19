@@ -38,21 +38,6 @@ def get_whoop_client(db):
     )
 
 
-def create_whoop_client():
-    # lazy import — whoop-write-api may not be installed
-    from whoop import WhoopClient
-    from whoop.auth import WhoopAuth
-    from server.config import settings
-
-    if settings.whoop_client_id and settings.whoop_client_secret:
-        auth = WhoopAuth(
-            client_id=settings.whoop_client_id,
-            client_secret=settings.whoop_client_secret,
-        )
-        auth.access_token = settings.whoop_access_token
-        return WhoopClient(auth=auth)
-    return WhoopClient(token=settings.whoop_access_token)
-
 
 async def sync_whoop_biometrics(db: Session, whoop_client):
     from whoop import WhoopAPIError
@@ -161,8 +146,8 @@ async def process_whoop_queue(db: Session):
         return {"processed": 0}
 
     try:
-        client = create_whoop_client()
-    except (ImportError, ValueError) as e:
+        client = get_whoop_client(db)
+    except (ImportError, HTTPException, ValueError) as e:
         return {"processed": 0, "error": str(e)}
 
     processed = 0

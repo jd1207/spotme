@@ -217,7 +217,7 @@ async def test_queue_retry_success(seeded_db):
     mock_client = AsyncMock()
     mock_client.log_workout.return_value = WorkoutResult(activity_id=999, exercises_linked=False)
 
-    with patch("server.services.whoop_service.create_whoop_client", return_value=mock_client):
+    with patch("server.services.whoop_service.get_whoop_client", return_value=mock_client):
         result = await process_whoop_queue(seeded_db)
 
     assert result["processed"] == 1
@@ -247,7 +247,7 @@ async def test_queue_retry_marks_failed_after_max(seeded_db):
     mock_client = AsyncMock()
     mock_client.log_workout.side_effect = WhoopAPIError("still broken", status_code=500)
 
-    with patch("server.services.whoop_service.create_whoop_client", return_value=mock_client):
+    with patch("server.services.whoop_service.get_whoop_client", return_value=mock_client):
         result = await process_whoop_queue(seeded_db)
 
     assert result["processed"] == 0
@@ -339,30 +339,6 @@ def test_get_whoop_client_no_token(db):
     with pytest.raises(HTTPException):
         get_whoop_client(db)
 
-
-# -- create_whoop_client tests --
-
-def test_create_client_with_auth():
-    with patch("server.config.settings") as mock_settings:
-        mock_settings.whoop_client_id = "my-id"
-        mock_settings.whoop_client_secret = "my-secret"
-        mock_settings.whoop_access_token = "fake-token"
-        from server.services.whoop_service import create_whoop_client
-        client = create_whoop_client()
-    assert client is not None
-    assert client._auth is not None
-    assert client._auth.client_id == "my-id"
-
-
-def test_create_client_token_only():
-    with patch("server.config.settings") as mock_settings:
-        mock_settings.whoop_client_id = ""
-        mock_settings.whoop_client_secret = ""
-        mock_settings.whoop_access_token = "bare-token"
-        from server.services.whoop_service import create_whoop_client
-        client = create_whoop_client()
-    assert client is not None
-    assert client._auth is None
 
 
 # -- /api/whoop/latest tests --
