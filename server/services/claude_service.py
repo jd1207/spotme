@@ -193,3 +193,51 @@ async def _call_claude(system_prompt: str, message: str) -> str:
     )
     raw = response.content[0].text
     return _extract_json(raw.strip())
+
+
+MAX_TOOL_ITERATIONS = 3
+
+
+async def _call_claude_with_tools(
+    system_prompt: str,
+    message: str,
+    tools: list[dict],
+    tool_executor,
+    db,
+    history: list[dict] | None = None,
+) -> str:
+    """call claude with tool-use loop, executing tools until final text response."""
+    client = anthropic.AsyncAnthropic()
+    messages = list(history) if history else []
+    messages.append({"role": "user", "content": message})
+
+    for _ in range(MAX_TOOL_ITERATIONS):
+        response = await client.messages.create(
+            model=MODEL,
+            max_tokens=4096,
+            system=system_prompt,
+            messages=messages,
+            tools=tools,
+        )
+
+        if response.stop_reason != "tool_use":
+            # final text response
+            text_blocks = [b.text for b in response.content if b.type == "text"]
+            raw = " ".join(text_blocks)
+            return _extract_json(raw.strip())
+
+        # execute each tool call
+        messages.append({"role": "assistant", "content": response.content})
+        tool_results = []
+        for block in response.content:
+            if block.type == "tool_use":
+                result = await tool_executor(block.name, block.input, db)
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": json.dumps(result),
+                })
+        messages.append({"role": "user", "content": tool_results})
+
+    # max iterations reached
+    return '{"response": "I had trouble completing that action.", "layout": null}'
