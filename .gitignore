@@ -10,3 +10,5 @@ dist/
 .superpowers/
 *.db-shm
 *.db-wal
+posts/
+posts/
