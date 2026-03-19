@@ -138,7 +138,7 @@ class ClaudeService:
         system = f"{SYSTEM_PROMPT}\n\nCurrent context:\n{context}"
         try:
             raw_text = await _call_claude(system, message)
-        except RuntimeError as e:
+        except Exception as e:
             logger.error("claude call failed: %s", e)
             return {"response": "Having trouble reaching Claude right now. Try again in a sec.", "layout": None, "profile": None, "memory_update": None, "set_suggestion": None, "meal": None, "workout_plan": None}
         try:
