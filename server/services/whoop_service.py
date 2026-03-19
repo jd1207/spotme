@@ -63,10 +63,18 @@ async def sync_whoop_biometrics(db: Session, force=False):
 
         from whoop import WhoopAPIError
         from server.config import today_eastern, TIMEZONE
-        yesterday = (datetime.now(TIMEZONE) - timedelta(days=1)).strftime("%Y-%m-%dT00:00:00.000Z")
+
+        # backfill from last synced date, or yesterday if fresh
+        latest_row = db.query(WhoopData).order_by(WhoopData.date.desc()).first()
+        if latest_row:
+            days_behind = (datetime.now(TIMEZONE).date() - datetime.strptime(latest_row.date, "%Y-%m-%d").date()).days
+            start_from = max(days_behind + 1, 1)  # at least 1 day back
+        else:
+            start_from = 1
+        start_date = (datetime.now(TIMEZONE) - timedelta(days=start_from)).strftime("%Y-%m-%dT00:00:00.000Z")
         try:
-            recoveries = await client.get_recovery(start=yesterday)
-            sleeps = await client.get_sleep(start=yesterday)
+            recoveries = await client.get_recovery(start=start_date)
+            sleeps = await client.get_sleep(start=start_date)
         except WhoopAPIError as e:
             logger.warning("whoop biometric sync failed: %s", e)
             return {"error": str(e), "synced": 0}
@@ -99,7 +107,7 @@ async def sync_whoop_biometrics(db: Session, force=False):
 
         # strain from cycles — fetched independently since scope may not be granted
         try:
-            cycles = await client.get_cycles(start=yesterday)
+            cycles = await client.get_cycles(start=start_date)
             for c in cycles:
                 date_str = c.start[:10]
                 existing = db.query(WhoopData).filter_by(date=date_str).first()
