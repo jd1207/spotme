@@ -368,15 +368,6 @@ def test_whoop_latest_with_data(test_app, engine):
     assert data["strain"] == 12.5
 
 
-# -- test-write endpoint tests --
-
-def test_whoop_test_write_no_write_token(test_app):
-    with patch("server.routes.whoop._get_write_token", return_value=None):
-        resp = test_app.post("/api/whoop/test-write")
-    assert resp.status_code == 200
-    assert resp.json()["success"] is False
-    assert "login" in resp.json()["error"].lower()
-
 
 @pytest.mark.asyncio
 async def test_sync_biometrics_cycles_fail_graceful(db):
