@@ -1,0 +1,18 @@
+services:
+  spotme:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      # persistent data (database, videos)
+      - spotme-data:/data
+      - ./videos:/app/videos
+      # mount claude code credentials (run `claude` once on host to log in)
+      - ~/.claude:/root/.claude:ro
+    environment:
+      - DATABASE_URL=sqlite:////data/spotme.db
+      - VIDEO_DIR=/app/videos
+    restart: unless-stopped
+
+volumes:
+  spotme-data:

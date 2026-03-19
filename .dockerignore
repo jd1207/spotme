@@ -1,0 +1,17 @@
+.env
+*.db
+*.db-shm
+*.db-wal
+data/
+videos/
+__pycache__/
+*.pyc
+node_modules/
+dist/
+.pytest_cache/
+.venv/
+.git/
+.claude/
+.superpowers/
+tests/
+deploy/

@@ -29,43 +29,45 @@ Your phone connects over local network or Tailscale. All data stays on your hard
 
 ### Prerequisites
 
-- Python 3.11+
-- Node.js 20+
+- [Docker](https://docs.docker.com/get-docker/) (recommended) or Python 3.11+ and Node.js 20+
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and logged in
-- ffmpeg (for video form checks, optional)
 
 Claude Code provides the AI — no API key needed. Just install it and log in:
 
 ```bash
 npm install -g @anthropic-ai/claude-code
-claude  # follow the login prompts
+claude  # follow the login prompts, then exit
 ```
 
-### Install
+### Docker (recommended)
+
+```bash
+git clone https://github.com/jd1207/spotme.git
+cd spotme
+docker compose up -d
+```
+
+That's it. Open `http://<your-server-ip>:8000` on your phone.
+
+Your data lives in a Docker volume. Claude Code credentials are mounted read-only from your host.
+
+### Manual install
 
 ```bash
 git clone https://github.com/jd1207/spotme.git
 cd spotme
 
-# create virtualenv and install
+# backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-
-# optional: whoop integration
-pip install -e ".[whoop]"
-
-# set up config
+pip install -e ".[whoop]"   # optional: whoop integration
 cp .env.example .env
 
-# build frontend
+# frontend
 cd frontend && npm install && npm run build && cd ..
-```
 
-### Run
-
-```bash
-source .venv/bin/activate
+# run
 uvicorn server.main:app --host 0.0.0.0 --port 8000
 ```
 
