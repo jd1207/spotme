@@ -11,8 +11,7 @@ logger = logging.getLogger("spotme.cli")
 def whoop_sync():
     """sync whoop biometrics with dedup and auth error tracking"""
     from server.database import SessionLocal
-    from server.models import WhoopData, SystemMemory
-    from server.config import settings
+    from server.models import WhoopData, WhoopToken, SystemMemory
 
     db = SessionLocal()
     try:
@@ -25,14 +24,13 @@ def whoop_sync():
                 logger.info("skipping sync — last sync was %s ago", age)
                 return
 
-        if not settings.whoop_access_token:
-            logger.warning("whoop not configured — no access token")
+        if not db.query(WhoopToken).first():
+            logger.warning("whoop not configured — no token in database")
             return
 
         try:
-            from server.services.whoop_service import create_whoop_client, sync_whoop_biometrics
-            client = create_whoop_client()
-            result = asyncio.run(sync_whoop_biometrics(db, client))
+            from server.services.whoop_service import sync_whoop_biometrics
+            result = asyncio.run(sync_whoop_biometrics(db, force=True))
             logger.info("whoop sync result: %s", result)
 
             # clear auth failure flag on success

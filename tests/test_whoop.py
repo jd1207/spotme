@@ -143,10 +143,12 @@ async def test_sync_biometrics_skips_duplicates(db):
         mock_factory.return_value = mock_client
         result = await sync_whoop_biometrics(db, force=True)
 
-    assert result["synced"] == 0
+    assert result["synced"] == 1
 
     whoop = db.query(WhoopData).filter_by(date="2026-03-16").first()
-    assert whoop.recovery_score == 80.0  # unchanged
+    assert whoop.recovery_score == 85.0  # updated with fresh data
+    assert whoop.hrv == 72.5
+    assert whoop.resting_hr == 50
 
 
 # -- push_workout_to_whoop tests --
