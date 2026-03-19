@@ -11,7 +11,7 @@ from server.models import (
     Program, Workout, Exercise, Set, WhoopData,
     Conversation, UserProfile, SystemMemory, Meal,
 )
-from server.config import settings, today_eastern
+from server.config import today_eastern
 from server.utils import recovery_zone
 
 router = APIRouter()
@@ -25,15 +25,16 @@ def _maybe_trigger_whoop_sync(db: Session):
     has_today = db.query(WhoopData).filter_by(date=today).first()
     if has_today:
         return
-    if not settings.whoop_access_token:
+    from server.models import WhoopToken
+    if not db.query(WhoopToken).first():
         return
     async def _do_sync():
         try:
-            from server.services.whoop_service import create_whoop_client, sync_whoop_biometrics
+            from server.services.whoop_service import get_whoop_client, sync_whoop_biometrics
             from server.database import SessionLocal
             sync_db = SessionLocal()
             try:
-                client = create_whoop_client()
+                client = get_whoop_client(sync_db)
                 await sync_whoop_biometrics(sync_db, client)
             finally:
                 sync_db.close()

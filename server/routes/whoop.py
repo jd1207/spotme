@@ -1,10 +1,8 @@
 import logging
-import secrets
 from fastapi import APIRouter, Depends
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from server.database import get_db
-from server.config import settings
 from server.models import WhoopToken, WhoopData, SystemMemory
 
 logger = logging.getLogger(__name__)
@@ -23,8 +21,6 @@ def _get_access_token(db: Session) -> str | None:
     token_row = _get_token(db)
     if token_row:
         return token_row.access_token
-    if settings.whoop_access_token:
-        return settings.whoop_access_token
     return None
 
 
@@ -33,8 +29,8 @@ async def _refresh_token(db: Session) -> str | None:
     token_row = _get_token(db)
     if not token_row or not token_row.refresh_token:
         return None
-    if not settings.whoop_client_id or not settings.whoop_client_secret:
-        return None
+    # oauth refresh requires client credentials — not available in cognito flow
+    return None
     try:
         import httpx
         async with httpx.AsyncClient(base_url="https://api.prod.whoop.com") as client:
@@ -115,79 +111,23 @@ def _set_write_token(db: Session, token: str):
 @router.get("/whoop/status")
 async def whoop_status(db: Session = Depends(get_db)):
     token = _get_access_token(db)
-    configured = bool(settings.whoop_client_id and settings.whoop_client_secret)
     write_token = _get_write_token(db)
     return {
         "connected": token is not None,
-        "oauth_available": configured,
+        "oauth_available": False,
         "write_enabled": write_token is not None,
     }
 
 
 @router.get("/whoop/authorize")
 async def whoop_authorize(db: Session = Depends(get_db)):
-    if not settings.whoop_client_id:
-        return {"error": "whoop client_id not configured in .env"}
-    state = secrets.token_urlsafe(32)
-    _set_oauth_state(db, state)
-    params = (
-        f"?client_id={settings.whoop_client_id}"
-        f"&redirect_uri={REDIRECT_URI}"
-        f"&response_type=code"
-        f"&scope=offline read:recovery read:sleep read:workout read:cycles read:profile read:body_measurement"
-        f"&state={state}"
-    )
-    return {"url": f"{WHOOP_AUTH_URL}{params}"}
+    return {"error": "oauth flow replaced by cognito login — use POST /api/whoop/login"}
 
 
 @router.get("/whoop/callback")
 async def whoop_callback(code: str, state: str, db: Session = Depends(get_db)):
-    logger.info(f"whoop callback hit: code={code[:10]}..., state={state[:10]}...")
-    expected = _get_oauth_state(db)
-    logger.info(f"expected state: {expected[:10] if expected else 'EMPTY'}...")
-    if not expected or state != expected:
-        logger.error(f"state mismatch: got={state[:10]}, expected={expected[:10] if expected else 'EMPTY'}")
-        return RedirectResponse("/?whoop=error&reason=invalid_state")
-    _set_oauth_state(db, "")
-    try:
-        import httpx
-        logger.info("exchanging code for token...")
-        async with httpx.AsyncClient(base_url="https://api.prod.whoop.com") as client:
-            resp = await client.post(
-                "/oauth/oauth2/token",
-                data={
-                    "grant_type": "authorization_code",
-                    "code": code,
-                    "redirect_uri": REDIRECT_URI,
-                    "client_id": settings.whoop_client_id,
-                    "client_secret": settings.whoop_client_secret,
-                },
-            )
-        if resp.status_code != 200:
-            logger.error(f"token exchange failed: {resp.status_code} {resp.text}")
-            return RedirectResponse(f"/?whoop=error&reason=token_exchange_{resp.status_code}")
-        data = resp.json()
-        logger.info(f"token exchange successful, keys: {list(data.keys())}")
-        access_token = data["access_token"]
-        refresh_token = data.get("refresh_token", "")
-        token_row = _get_token(db)
-        if token_row:
-            token_row.access_token = access_token
-            token_row.refresh_token = refresh_token
-        else:
-            db.add(WhoopToken(
-                access_token=access_token,
-                refresh_token=refresh_token,
-            ))
-        db.commit()
-        logger.info("whoop connected successfully")
-        return RedirectResponse("/?whoop=connected")
-    except ImportError:
-        logger.error("httpx not installed")
-        return RedirectResponse("/?whoop=error&reason=library_missing")
-    except Exception as e:
-        logger.error(f"whoop callback error: {e}")
-        return RedirectResponse(f"/?whoop=error&reason={str(e)[:50]}")
+    # oauth callback no longer supported — cognito login replaces this flow
+    return RedirectResponse("/?whoop=error&reason=oauth_deprecated")
 
 
 @router.post("/whoop/disconnect")
@@ -206,20 +146,29 @@ async def whoop_login(data: dict, db: Session = Depends(get_db)):
     if not email or not password:
         return {"success": False, "error": "email and password required"}
     try:
-        from whoop.auth import WhoopAuth, WhoopAuthError
+        from whoop import CognitoAuth
     except ImportError:
         return {"success": False, "error": "whoop-write-api not installed"}
     try:
-        auth = WhoopAuth()
-        token = await auth.login_password(email, password)
-        _set_write_token(db, token)
-        logger.info("whoop write token obtained via password login")
-        return {"success": True}
-    except WhoopAuthError as e:
-        return {"success": False, "error": str(e)}
+        auth = CognitoAuth()
+        tokens = await auth.login(email, password)
     except Exception as e:
-        logger.warning("whoop login failed: %s", e)
         return {"success": False, "error": str(e)}
+
+    from datetime import datetime
+    existing = db.query(WhoopToken).first()
+    if existing:
+        existing.access_token = tokens.access_token
+        existing.refresh_token = tokens.refresh_token
+        existing.expires_at = datetime.fromtimestamp(tokens.expires_at)
+    else:
+        db.add(WhoopToken(
+            access_token=tokens.access_token,
+            refresh_token=tokens.refresh_token,
+            expires_at=datetime.fromtimestamp(tokens.expires_at),
+        ))
+    db.commit()
+    return {"connected": True}
 
 
 @router.get("/whoop/sync")

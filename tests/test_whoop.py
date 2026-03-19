@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
 from server.database import Base, get_db
-from server.models import Program, Workout, Exercise, Set, WhoopData, WhoopSyncQueue, Meal, ExerciseCatalog
+from server.models import Program, Workout, Exercise, Set, WhoopData, WhoopSyncQueue, Meal, ExerciseCatalog, WhoopToken
 
 
 @pytest.fixture
@@ -198,7 +198,12 @@ async def test_push_workout_not_found(db):
 @pytest.mark.asyncio
 async def test_queue_retry_success(seeded_db):
     from server.services.whoop_service import process_whoop_queue
+    from datetime import datetime, timedelta
 
+    seeded_db.add(WhoopToken(
+        access_token="fake-token", refresh_token="fake-refresh",
+        expires_at=datetime.utcnow() + timedelta(hours=1),
+    ))
     workout = seeded_db.query(Workout).first()
     seeded_db.add(WhoopSyncQueue(
         workout_id=workout.id,
@@ -212,9 +217,7 @@ async def test_queue_retry_success(seeded_db):
     mock_client = AsyncMock()
     mock_client.log_workout.return_value = WorkoutResult(activity_id=999, exercises_linked=False)
 
-    with patch("server.services.whoop_service.create_whoop_client", return_value=mock_client), \
-         patch("server.services.whoop_service.settings") as mock_settings:
-        mock_settings.whoop_access_token = "fake-token"
+    with patch("server.services.whoop_service.create_whoop_client", return_value=mock_client):
         result = await process_whoop_queue(seeded_db)
 
     assert result["processed"] == 1
@@ -226,7 +229,12 @@ async def test_queue_retry_success(seeded_db):
 async def test_queue_retry_marks_failed_after_max(seeded_db):
     from server.services.whoop_service import process_whoop_queue
     from whoop import WhoopAPIError
+    from datetime import datetime, timedelta
 
+    seeded_db.add(WhoopToken(
+        access_token="fake-token", refresh_token="fake-refresh",
+        expires_at=datetime.utcnow() + timedelta(hours=1),
+    ))
     workout = seeded_db.query(Workout).first()
     seeded_db.add(WhoopSyncQueue(
         workout_id=workout.id,
@@ -239,9 +247,7 @@ async def test_queue_retry_marks_failed_after_max(seeded_db):
     mock_client = AsyncMock()
     mock_client.log_workout.side_effect = WhoopAPIError("still broken", status_code=500)
 
-    with patch("server.services.whoop_service.create_whoop_client", return_value=mock_client), \
-         patch("server.services.whoop_service.settings") as mock_settings:
-        mock_settings.whoop_access_token = "fake-token"
+    with patch("server.services.whoop_service.create_whoop_client", return_value=mock_client):
         result = await process_whoop_queue(seeded_db)
 
     assert result["processed"] == 0
@@ -253,12 +259,16 @@ async def test_queue_retry_marks_failed_after_max(seeded_db):
 @pytest.mark.asyncio
 async def test_queue_empty_noop(db):
     from server.services.whoop_service import process_whoop_queue
+    from datetime import datetime, timedelta
 
-    with patch("server.services.whoop_service.settings") as mock_settings:
-        mock_settings.whoop_access_token = "fake-token"
-        mock_settings.whoop_client_id = ""
-        mock_settings.whoop_client_secret = ""
-        result = await process_whoop_queue(db)
+    # add token so guard passes, but no pending items
+    db.add(WhoopToken(
+        access_token="fake-token", refresh_token="fake-refresh",
+        expires_at=datetime.utcnow() + timedelta(hours=1),
+    ))
+    db.commit()
+
+    result = await process_whoop_queue(db)
 
     assert result["processed"] == 0
 
@@ -266,17 +276,15 @@ async def test_queue_empty_noop(db):
 # -- route tests --
 
 def test_whoop_sync_no_token(test_app):
-    with patch("server.routes.whoop.settings") as mock_settings:
-        mock_settings.whoop_access_token = ""
-        resp = test_app.get("/api/whoop/sync")
+    # no WhoopToken in db — sync should report not connected
+    resp = test_app.get("/api/whoop/sync")
     assert resp.status_code == 200
     assert "not co" in resp.json()["error"]
 
 
 def test_whoop_retry_no_token(test_app):
-    with patch("server.routes.whoop.settings") as mock_settings:
-        mock_settings.whoop_access_token = ""
-        resp = test_app.post("/api/whoop/retry")
+    # no WhoopToken in db — retry should report not connected
+    resp = test_app.post("/api/whoop/retry")
     assert resp.status_code == 200
     assert "not co" in resp.json()["error"]
 
@@ -297,9 +305,8 @@ def test_complete_workout_no_whoop(test_app, engine):
     workout_id = workout.id
     session.close()
 
-    with patch("server.routes.workout.settings") as mock_settings:
-        mock_settings.whoop_access_token = ""
-        resp = test_app.post("/api/workout/complete", json={"workout_id": workout_id})
+    # no WhoopToken row in db — whoop not configured
+    resp = test_app.post("/api/workout/complete", json={"workout_id": workout_id})
 
     assert resp.status_code == 200
     data = resp.json()
@@ -308,14 +315,38 @@ def test_complete_workout_no_whoop(test_app, engine):
     assert data["whoop_error"] == "whoop not configured"
 
 
+def test_get_whoop_client_from_db_token(db):
+    """get_whoop_client loads tokens from WhoopToken table."""
+    from datetime import datetime, timedelta
+
+    db.add(WhoopToken(
+        access_token="test-access",
+        refresh_token="test-refresh",
+        expires_at=datetime.utcnow() + timedelta(hours=1),
+    ))
+    db.commit()
+
+    with patch("whoop.WhoopClient") as MockClient:
+        from server.services.whoop_service import get_whoop_client
+        client = get_whoop_client(db)
+        MockClient.assert_called_once()
+
+
+def test_get_whoop_client_no_token(db):
+    """get_whoop_client raises when no token stored."""
+    from server.services.whoop_service import get_whoop_client
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException):
+        get_whoop_client(db)
+
+
 # -- create_whoop_client tests --
 
 def test_create_client_with_auth():
-    with patch("server.services.whoop_service.settings") as mock_settings:
+    with patch("server.config.settings") as mock_settings:
         mock_settings.whoop_client_id = "my-id"
         mock_settings.whoop_client_secret = "my-secret"
         mock_settings.whoop_access_token = "fake-token"
-        client = None
         from server.services.whoop_service import create_whoop_client
         client = create_whoop_client()
     assert client is not None
@@ -324,7 +355,7 @@ def test_create_client_with_auth():
 
 
 def test_create_client_token_only():
-    with patch("server.services.whoop_service.settings") as mock_settings:
+    with patch("server.config.settings") as mock_settings:
         mock_settings.whoop_client_id = ""
         mock_settings.whoop_client_secret = ""
         mock_settings.whoop_access_token = "bare-token"

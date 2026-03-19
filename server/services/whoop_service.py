@@ -1,19 +1,48 @@
 from __future__ import annotations
 import json
 import logging
+from datetime import datetime
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from server.models import WhoopData, WhoopSyncQueue, Workout, Exercise, Set
-from server.config import settings
 
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 
 
+def get_whoop_client(db):
+    """create a whoop client with auto-refresh from stored tokens."""
+    from whoop import WhoopClient, TokenSet
+    from server.models import WhoopToken
+
+    stored = db.query(WhoopToken).first()
+    if not stored:
+        raise HTTPException(400, "whoop not connected — login first")
+
+    token_set = TokenSet(
+        access_token=stored.access_token,
+        refresh_token=stored.refresh_token,
+        expires_at=stored.expires_at.timestamp() if stored.expires_at else 0,
+    )
+
+    def persist_refreshed_tokens(new_tokens):
+        stored.access_token = new_tokens.access_token
+        stored.refresh_token = new_tokens.refresh_token
+        stored.expires_at = datetime.fromtimestamp(new_tokens.expires_at)
+        db.commit()
+
+    return WhoopClient(
+        token_set=token_set,
+        on_token_refresh=persist_refreshed_tokens,
+    )
+
+
 def create_whoop_client():
     # lazy import — whoop-write-api may not be installed
     from whoop import WhoopClient
     from whoop.auth import WhoopAuth
+    from server.config import settings
 
     if settings.whoop_client_id and settings.whoop_client_secret:
         auth = WhoopAuth(
@@ -117,8 +146,9 @@ async def push_workout_to_whoop(db: Session, whoop_client, workout_id: int):
 
 async def process_whoop_queue(db: Session):
     from whoop import WorkoutWrite, ExerciseWrite, WhoopAPIError
+    from server.models import WhoopToken
 
-    if not settings.whoop_access_token:
+    if not db.query(WhoopToken).first():
         return {"processed": 0, "error": "whoop not configured"}
 
     pending = (

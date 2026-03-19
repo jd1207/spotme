@@ -5,7 +5,7 @@ from server.database import get_db
 from server.models import Workout, Exercise, Set, WhoopData
 from server.schemas import WorkoutCompleteRequest, WorkoutCompleteResponse, SetLog, CompleteSetRequest
 from server.services.workout_sequencer import complete_set as sequencer_complete_set
-from server.config import settings, today_eastern, TIMEZONE
+from server.config import today_eastern, TIMEZONE
 
 router = APIRouter()
 
@@ -159,19 +159,20 @@ async def complete_workout(request: WorkoutCompleteRequest, db: Session = Depend
 
     whoop_synced = False
     whoop_error = None
-    if settings.whoop_access_token:
+    from server.models import WhoopToken
+    token = db.query(WhoopToken).first()
+    if token:
         try:
-            from server.services.whoop_service import (
-                create_whoop_client,
-                push_workout_to_whoop,
-            )
-            client = create_whoop_client()
+            from server.services.whoop_service import get_whoop_client, push_workout_to_whoop
+            client = get_whoop_client(db)
             result = await push_workout_to_whoop(db, client, workout.id)
             whoop_synced = result.get("synced", False)
             if not whoop_synced:
                 whoop_error = result.get("error", "unknown error")
         except ImportError:
             whoop_error = "whoop-write-api not installed"
+        except Exception as e:
+            whoop_error = str(e)
     else:
         whoop_error = "whoop not configured"
     return WorkoutCompleteResponse(status="completed", whoop_synced=whoop_synced, whoop_error=whoop_error)
