@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import { api } from '../api'
 
+function userKey(key: string): string {
+  const match = window.location.pathname.match(/^\/u\/([a-zA-Z0-9_-]+)/)
+  const prefix = match ? `spotme_${match[1]}` : 'spotme'
+  return `${prefix}_${key}`
+}
+
 interface OnboardingProps {
   onComplete: () => void
 }
@@ -55,8 +61,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         equipment: equipment || 'Full gym',
         training_frequency: frequency,
       })
-      localStorage.setItem('spotme_onboarded', '1')
-      localStorage.setItem('spotme_intake_done', '1')
+      localStorage.setItem(userKey('onboarded'), '1')
+      localStorage.setItem(userKey('intake_done'), '1')
       onComplete()
     } catch {
       setGeneratingStatus('Something went wrong. Trying again...')

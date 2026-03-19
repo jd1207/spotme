@@ -10,9 +10,16 @@ import { api } from './api'
 
 type Tab = 'workout' | 'program' | 'diet' | 'profile'
 
+// scope localStorage keys by user path so /u/maria/ doesn't share with /
+function userKey(key: string): string {
+  const match = window.location.pathname.match(/^\/u\/([a-zA-Z0-9_-]+)/)
+  const prefix = match ? `spotme_${match[1]}` : 'spotme'
+  return `${prefix}_${key}`
+}
+
 export default function App() {
   const [ready, setReady] = useState(
-    () => localStorage.getItem('spotme_intake_done') === '1'
+    () => localStorage.getItem(userKey('intake_done')) === '1'
   )
   const [loading, setLoading] = useState(!ready)
   const [tab, setTab] = useState<Tab>('workout')
@@ -24,8 +31,8 @@ export default function App() {
     api.getProfile()
       .then(p => {
         if (p && p.name) {
-          localStorage.setItem('spotme_intake_done', '1')
-          localStorage.setItem('spotme_onboarded', '1')
+          localStorage.setItem(userKey('intake_done'), '1')
+          localStorage.setItem(userKey('onboarded'), '1')
           setReady(true)
         }
       })
@@ -54,8 +61,8 @@ export default function App() {
       {tab === 'profile' && (
         <Profile
           onReplayTutorial={() => {
-            localStorage.removeItem('spotme_onboarded')
-            localStorage.removeItem('spotme_intake_done')
+            localStorage.removeItem(userKey('onboarded'))
+            localStorage.removeItem(userKey('intake_done'))
             setReady(false)
           }}
         />
