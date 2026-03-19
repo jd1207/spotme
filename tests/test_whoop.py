@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
 from server.database import Base, get_db
-from server.models import Program, Workout, Exercise, Set, WhoopData, WhoopSyncQueue
+from server.models import Program, Workout, Exercise, Set, WhoopData, WhoopSyncQueue, Meal, ExerciseCatalog
 
 
 @pytest.fixture
@@ -393,3 +393,19 @@ async def test_sync_biometrics_cycles_fail_graceful(db):
 
     whoop = db.query(WhoopData).filter_by(date="2026-03-17").first()
     assert whoop.recovery_score == 80.0
+
+
+def test_v04_schema_columns(db):
+    """verify v0.4 columns exist on models"""
+    ex = Exercise(name="test", whoop_exercise_id="BENCHPRESS_BARBELL", order=1)
+    w = Workout(date="2026-03-18", status="active", type="strength", whoop_activity_id="uuid-123")
+    m = Meal(date="2026-03-18", description="test", journal_signals='{"caffeine": 1}')
+    sq = WhoopSyncQueue(sync_type="journal", status="pending", payload="{}")
+    ec = ExerciseCatalog(whoop_id="BENCHPRESS_BARBELL", name="Bench Press")
+    db.add_all([ex, w, m, sq, ec])
+    db.commit()
+    assert ex.whoop_exercise_id == "BENCHPRESS_BARBELL"
+    assert w.whoop_activity_id == "uuid-123"
+    assert ec.name == "Bench Press"
+    assert sq.sync_type == "journal"
+    assert m.journal_signals == '{"caffeine": 1}'

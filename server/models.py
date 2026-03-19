@@ -1,3 +1,4 @@
+from datetime import datetime
 from sqlalchemy import Column, Integer, String, Float, Boolean, Text, ForeignKey, DateTime
 from sqlalchemy.sql import func
 from server.database import Base
@@ -22,6 +23,7 @@ class Workout(Base):
     whoop_strain = Column(Float, nullable=True)
     status = Column(String, default="active")
     notes = Column(Text, nullable=True)
+    whoop_activity_id = Column(String, nullable=True)
 
 class Exercise(Base):
     __tablename__ = "exercises"
@@ -30,6 +32,7 @@ class Exercise(Base):
     name = Column(String, nullable=False)
     order = Column(Integer, nullable=False)
     notes = Column(Text, nullable=True)
+    whoop_exercise_id = Column(String, nullable=True)
 
 class Set(Base):
     __tablename__ = "sets"
@@ -115,7 +118,8 @@ class WhoopToken(Base):
 class WhoopSyncQueue(Base):
     __tablename__ = "whoop_sync_queue"
     id = Column(Integer, primary_key=True)
-    workout_id = Column(Integer, ForeignKey("workouts.id"))
+    workout_id = Column(Integer, ForeignKey("workouts.id"), nullable=True)
+    sync_type = Column(String, default="workout")
     payload = Column(Text, nullable=False)
     status = Column(String, default="pending")
     retries = Column(Integer, default=0)
@@ -134,4 +138,15 @@ class Meal(Base):
     fat = Column(Float, nullable=True)
     meal_type = Column(String, nullable=True)
     items = Column(Text, nullable=True)
+    journal_signals = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class ExerciseCatalog(Base):
+    __tablename__ = "exercise_catalog"
+    id = Column(Integer, primary_key=True)
+    whoop_id = Column(String, nullable=False, unique=True)
+    name = Column(String, nullable=False)
+    equipment = Column(String, nullable=True)
+    muscle_group = Column(String, nullable=True)
+    cached_at = Column(DateTime, default=datetime.utcnow)
