@@ -78,8 +78,8 @@ async def sync_whoop(db: Session = Depends(get_db)):
 
 @router.get("/whoop/latest")
 async def whoop_latest(db: Session = Depends(get_db)):
-    from datetime import date
-    row = db.query(WhoopData).filter_by(date=date.today().isoformat()).first()
+    from server.config import today_eastern
+    row = db.query(WhoopData).filter_by(date=today_eastern()).first()
     if not row:
         return {"data": None}
     return {

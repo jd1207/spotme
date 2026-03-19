@@ -1,4 +1,10 @@
-const BASE = '/api'
+// detect /u/{user_id}/ prefix for multi-user routing
+function getApiBase(): string {
+  const match = window.location.pathname.match(/^\/u\/([a-zA-Z0-9_-]+)/)
+  return match ? `/u/${match[1]}/api` : '/api'
+}
+
+const BASE = getApiBase()
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const resp = await fetch(`${BASE}${path}`, { headers: { 'Content-Type': 'application/json' }, ...options })
@@ -7,6 +13,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  interviewQuestions: (profile: { name: string; experience: string; goals: string; frequency: string; equipment: string }) => request<{ questions: string[] }>('/interview/questions', { method: 'POST', body: JSON.stringify(profile) }),
   chat: (message: string, workoutId?: number, date?: string) => request<import('./types').ChatResponse>('/chat', { method: 'POST', body: JSON.stringify({ message, workout_id: workoutId ?? null, date: date ?? null }) }),
   startWorkout: (type?: string) => request<{ id: number; date: string; status: string; resumed: boolean }>('/workout/start', { method: 'POST', body: JSON.stringify({ type: type ?? 'strength' }) }),
   getRecentWorkouts: () => request<Array<{ id: number; date: string; type: string; status: string; duration: number | null; exercises: Array<{ name: string; sets: Array<{ weight: number; reps: number; rpe: number | null }> }>; recovery: number | null }>>('/workout/recent'),

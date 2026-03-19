@@ -21,7 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 whoop = [
-    "whoop-write-api @ file:///home/deck/whoop-write-api",
+    "whoop-write-api @ git+https://github.com/jd1207/whoop-write-api.git",
 ]
 dev = [
     "pytest>=8.0",

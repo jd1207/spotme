@@ -1,11 +1,13 @@
 from __future__ import annotations
+import asyncio
 import json
 import logging
-import anthropic
+import shutil
 from server.services.layout_service import validate_layout
 
 logger = logging.getLogger(__name__)
 
+CLAUDE_BIN = shutil.which("claude") or "/home/deck/.local/bin/claude"
 MODEL = "claude-sonnet-4-20250514"
 
 SYSTEM_PROMPT = """You are SpotMe, an AI strength coach running inside a workout tracking app. You help the user train, log sets, adjust programming, and provide coaching based on their data.
@@ -312,6 +314,41 @@ class ClaudeService:
             "workout_plan": parsed.get("workout_plan"),
         }
 
+    async def generate_interview_questions(self, profile_summary: str) -> list[str]:
+        """generate personalized interview questions for onboarding."""
+        system = (
+            "You are SpotMe, an AI strength coach. Generate 3-5 interview questions "
+            "to learn what you need to build a personalized training program. "
+            "Tailor questions to the athlete's experience level.\n"
+            "For beginners: ask about training history, any injuries, what they enjoy, schedule.\n"
+            "For intermediate/advanced: ask about current lift numbers (squat, bench, deadlift, OHP), "
+            "weak points, PRs they're chasing, injury history, preferred training style.\n"
+            "Return ONLY a JSON array of question strings, nothing else."
+        )
+        raw = await _call_claude(system, f"Athlete profile: {profile_summary}")
+        try:
+            # handle both raw array and code-fenced array
+            import re
+            cleaned = raw.strip()
+            fence = re.search(r"```(?:json)?\s*\n?(\[.*?\])\s*\n?```", cleaned, re.DOTALL)
+            if fence:
+                cleaned = fence.group(1)
+            elif not cleaned.startswith("["):
+                bracket = re.search(r"\[.*\]", cleaned, re.DOTALL)
+                if bracket:
+                    cleaned = bracket.group(0)
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, list) and all(isinstance(q, str) for q in parsed):
+                return parsed[:5]
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return [
+            "What are your current best lifts or recent PRs?",
+            "Any injuries or physical limitations I should know about?",
+            "What does your typical training week look like right now?",
+            "Any specific goals or numbers you're chasing?",
+        ]
+
     async def analyze_form(self, frames_base64: list, context: str) -> dict:
         system = "You are a strength coach analyzing lifting form. Identify issues, suggest corrections, note what looks good."
         message = f"Analyze this lifting form. Context: {context}"
@@ -337,15 +374,27 @@ def _extract_json(text: str) -> str:
 
 
 async def _call_claude(system_prompt: str, message: str) -> str:
-    client = anthropic.AsyncAnthropic()
-    response = await client.messages.create(
-        model=MODEL,
-        max_tokens=4096,
-        system=system_prompt,
-        messages=[{"role": "user", "content": message}],
+    """call claude via CLI subprocess (inherits OAuth session)."""
+    proc = await asyncio.create_subprocess_exec(
+        CLAUDE_BIN, "--print",
+        "--model", MODEL,
+        "--append-system-prompt", system_prompt,
+        "-p", message,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
-    raw = response.content[0].text
-    return _extract_json(raw.strip())
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        raise RuntimeError("claude cli timed out after 120s")
+    if proc.returncode != 0:
+        error = stderr.decode().strip()
+        logger.error("claude cli error: %s", error)
+        raise RuntimeError(f"claude cli failed: {error}")
+    raw = stdout.decode().strip()
+    return _extract_json(raw)
 
 
 MAX_TOOL_ITERATIONS = 3
@@ -359,38 +408,41 @@ async def _call_claude_with_tools(
     db,
     history: list[dict] | None = None,
 ) -> str:
-    """call claude with tool-use loop, executing tools until final text response."""
-    client = anthropic.AsyncAnthropic()
-    messages = list(history) if history else []
-    messages.append({"role": "user", "content": message})
+    """call claude with tool-use via CLI, parsing tool calls from JSON response."""
+    # embed tool descriptions in the system prompt
+    tool_desc = "\n\n## Available Tools\n"
+    tool_desc += "When you need to use a tool, include a \"tool_calls\" array in your JSON response:\n"
+    tool_desc += '{"response": "...", "tool_calls": [{"name": "tool_name", "arguments": {...}}]}\n'
+    tool_desc += "After tool execution, you'll receive results and can respond.\n\n"
+    for tool in tools:
+        params = tool["input_schema"].get("properties", {})
+        required = tool["input_schema"].get("required", [])
+        param_strs = [f"  - {k} ({'required' if k in required else 'optional'}): {v.get('description', v.get('type', ''))}" for k, v in params.items()]
+        tool_desc += f"### {tool['name']}\n{tool['description']}\nParameters:\n" + "\n".join(param_strs) + "\n\n"
 
-    for _ in range(MAX_TOOL_ITERATIONS):
-        response = await client.messages.create(
-            model=MODEL,
-            max_tokens=4096,
-            system=system_prompt,
-            messages=messages,
-            tools=tools,
-        )
+    full_system = system_prompt + tool_desc
 
-        if response.stop_reason != "tool_use":
-            # final text response
-            text_blocks = [b.text for b in response.content if b.type == "text"]
-            raw = " ".join(text_blocks)
-            return _extract_json(raw.strip())
+    for iteration in range(MAX_TOOL_ITERATIONS):
+        if iteration == 0:
+            raw_text = await _call_claude(full_system, message)
+        else:
+            # follow-up with tool results
+            followup = f"Tool results:\n{json.dumps(tool_results_summary)}\n\nRespond to the user based on these results."
+            raw_text = await _call_claude(full_system, followup)
 
-        # execute each tool call
-        messages.append({"role": "assistant", "content": response.content})
-        tool_results = []
-        for block in response.content:
-            if block.type == "tool_use":
-                result = await tool_executor(block.name, block.input, db)
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": json.dumps(result),
-                })
-        messages.append({"role": "user", "content": tool_results})
+        try:
+            parsed = json.loads(raw_text)
+        except json.JSONDecodeError:
+            return raw_text
 
-    # max iterations reached
-    return '{"response": "I had trouble completing that action.", "layout": null}'
+        tool_calls = parsed.get("tool_calls", [])
+        if not tool_calls:
+            return raw_text
+
+        # execute tool calls
+        tool_results_summary = []
+        for tc in tool_calls:
+            result = await tool_executor(tc["name"], tc.get("arguments", {}), db)
+            tool_results_summary.append({"tool": tc["name"], "result": result})
+
+    return raw_text

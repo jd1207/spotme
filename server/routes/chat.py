@@ -311,6 +311,18 @@ async def get_chat_day(chat_date: str, db: Session = Depends(get_db)):
     }
 
 
+def _interview_has_lift_numbers(messages: list[dict]) -> bool:
+    """check if user provided specific lift numbers in interview answers."""
+    import re
+    for msg in messages:
+        if msg.get("role") != "user":
+            continue
+        content = msg.get("content", "")
+        if re.search(r'\b\d{2,3}\s*(?:lbs?|kg|pounds?|kilos?)?\b', content):
+            return True
+    return False
+
+
 @router.post("/intake")
 async def intake(data: dict, db: Session = Depends(get_db)):
     # save profile
@@ -323,35 +335,89 @@ async def intake(data: dict, db: Session = Depends(get_db)):
             setattr(profile, key, data[key])
     db.commit()
 
-    # if training plan text provided, ask Claude to parse and store as memory
-    plan_text = data.get("training_plan", "")
-    if plan_text:
-        service = ClaudeService()
-        profile_summary = f"Athlete: {profile.name}, {profile.experience_level}, goals: {profile.goals}, equipment: {profile.equipment}, frequency: {profile.training_frequency}"
-        if profile.injuries_notes:
-            profile_summary += f", limitations: {profile.injuries_notes}"
-        prompt = f"Here is my training plan and background. Store this as your training memory. Summarize what you understand and confirm you're ready to coach me.\n\n{plan_text}"
-        context = assemble_context(None, None, None, [], {
-            "name": profile.name, "goals": profile.goals,
-            "experience_level": profile.experience_level,
-            "equipment": profile.equipment,
-            "training_frequency": profile.training_frequency,
-            "injuries_notes": profile.injuries_notes,
-        })
-        result = await service.chat(prompt, context, db=db)
+    # build or store training program
+    service = ClaudeService()
+    profile_summary = f"Athlete: {profile.name}, {profile.experience_level}, goals: {profile.goals}, equipment: {profile.equipment}, frequency: {profile.training_frequency}"
+    if profile.injuries_notes:
+        profile_summary += f", limitations: {profile.injuries_notes}"
 
-        # save memory — use Claude's structured update if available, fall back to raw plan
-        memory_update = result.get("memory_update") or plan_text
+    plan_text = data.get("training_plan", "")
+    interview_raw = data.get("interview_messages", "")
+    interview_messages = []
+    if interview_raw:
+        try:
+            interview_messages = json_lib.loads(interview_raw)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    if plan_text:
+        prompt = f"Here is my training plan and background. Store this as your training memory. Summarize what you understand and confirm you're ready to coach me.\n\n{plan_text}"
+    elif interview_messages:
+        has_numbers = _interview_has_lift_numbers(interview_messages)
+        interview_text = "\n".join(
+            f"{'Coach' if m.get('role') == 'coach' else 'Athlete'}: {m.get('content', '')}"
+            for m in interview_messages
+        )
+        format_instructions = (
+            "Use this exact markdown format for the program in memory_update:\n"
+            "## Weekly Schedule\n- DayName: Workout Type\n\n"
+            "### Week 1\n- WorkoutType: exercises with weight x reps\n\n"
+            "### Week 2\n...\n\n"
+            "## Workout Type Day\n- Exercise sets x reps (template)\n"
+        )
+        if has_numbers:
+            prompt = (
+                f"Based on my interview answers below, create a 4-week training program "
+                f"with specific weights based on the numbers I provided. "
+                f"{format_instructions}\n"
+                f"Store the full program as memory_update. Confirm you're ready to coach me.\n\n"
+                f"Interview:\n{interview_text}"
+            )
+        else:
+            prompt = (
+                f"Based on my interview answers, I don't have specific lift numbers yet. "
+                f"Create a program where Week 1 is an Assessment Week with RPE-based sets "
+                f"to find working weights (e.g., 'work up to a comfortable 5RM at RPE 7-8', "
+                f"'find your 8RM at RPE 7'). Weeks 2-4 use percentages of Week 1 results "
+                f"(e.g., '85% of 5RM x 3 sets'). "
+                f"{format_instructions}\n"
+                f"Store the full program as memory_update. Confirm you're ready to coach me.\n\n"
+                f"Interview:\n{interview_text}"
+            )
+    else:
+        prompt = (
+            f"Create a training program for me based on my profile. I train {profile.training_frequency}. "
+            f"My goal is {profile.goals}. Experience: {profile.experience_level}. "
+            f"Equipment: {profile.equipment}. "
+            f"Build a 4-week program with a weekly schedule and week-by-week progression. "
+            f"Store the full program as your training memory using memory_update. "
+            f"Use this exact markdown format:\n\n"
+            f"## Weekly Schedule\n- DayName: Workout Type\n\n"
+            f"### Week 1\n- WorkoutType: exercises with weight x reps\n\n"
+            f"### Week 2\n...\n\n"
+            f"## Workout Type Day\n- Exercise sets x reps (template)\n\n"
+            f"Keep it practical and specific with real weights based on my level. "
+            f"Confirm you're ready to coach me."
+        )
+
+    context = assemble_context(None, None, None, [], {
+        "name": profile.name, "goals": profile.goals,
+        "experience_level": profile.experience_level,
+        "equipment": profile.equipment,
+        "training_frequency": profile.training_frequency,
+        "injuries_notes": profile.injuries_notes,
+    })
+    result = await service.chat(prompt, context, db=db)
+
+    memory_update = result.get("memory_update") or plan_text
+    if memory_update:
         memory_row = db.query(SystemMemory).filter_by(key=MEMORY_KEY).first()
         if memory_row:
             memory_row.content = memory_update
         else:
             db.add(SystemMemory(key=MEMORY_KEY, content=memory_update))
 
-        db.add(Conversation(role="user", content=prompt, context_type="intake"))
-        db.add(Conversation(role="assistant", content=result["response"], context_type="intake"))
-        db.commit()
-        return {"status": "ok", "response": result["response"]}
-
+    db.add(Conversation(role="user", content=prompt, context_type="intake"))
+    db.add(Conversation(role="assistant", content=result["response"], context_type="intake"))
     db.commit()
-    return {"status": "ok", "response": None}
+    return {"status": "ok", "response": result["response"]}

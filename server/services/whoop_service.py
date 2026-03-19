@@ -2,7 +2,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from server.models import WhoopData, WhoopSyncQueue, Workout, Exercise, Set
@@ -30,7 +30,7 @@ def get_whoop_client(db):
         expires_at=stored.expires_at.timestamp() if stored.expires_at else 0,
     )
 
-    def persist_refreshed_tokens(new_tokens):
+    async def persist_refreshed_tokens(new_tokens):
         stored.access_token = new_tokens.access_token
         stored.refresh_token = new_tokens.refresh_token
         stored.expires_at = datetime.fromtimestamp(new_tokens.expires_at)
@@ -62,9 +62,19 @@ async def sync_whoop_biometrics(db: Session, force=False):
             return {"error": str(e), "synced": 0}
 
         from whoop import WhoopAPIError
+        from server.config import today_eastern, TIMEZONE
+
+        # backfill from last synced date, or yesterday if fresh
+        latest_row = db.query(WhoopData).order_by(WhoopData.date.desc()).first()
+        if latest_row:
+            days_behind = (datetime.now(TIMEZONE).date() - datetime.strptime(latest_row.date, "%Y-%m-%d").date()).days
+            start_from = max(days_behind + 1, 1)  # at least 1 day back
+        else:
+            start_from = 1
+        start_date = (datetime.now(TIMEZONE) - timedelta(days=start_from)).strftime("%Y-%m-%dT00:00:00.000Z")
         try:
-            recoveries = await client.get_recovery()
-            sleeps = await client.get_sleep()
+            recoveries = await client.get_recovery(start=start_date)
+            sleeps = await client.get_sleep(start=start_date)
         except WhoopAPIError as e:
             logger.warning("whoop biometric sync failed: %s", e)
             return {"error": str(e), "synced": 0}
@@ -74,7 +84,13 @@ async def sync_whoop_biometrics(db: Session, force=False):
         for r in recoveries:
             date_str = r.created_at[:10]
             existing = db.query(WhoopData).filter_by(date=date_str).first()
-            if not existing:
+            if existing:
+                existing.recovery_score = r.recovery_score
+                existing.hrv = r.hrv
+                existing.resting_hr = int(r.resting_hr)
+                existing.synced_at = datetime.utcnow()
+                synced += 1
+            else:
                 db.add(WhoopData(
                     date=date_str,
                     recovery_score=r.recovery_score,
@@ -91,7 +107,7 @@ async def sync_whoop_biometrics(db: Session, force=False):
 
         # strain from cycles — fetched independently since scope may not be granted
         try:
-            cycles = await client.get_cycles()
+            cycles = await client.get_cycles(start=start_date)
             for c in cycles:
                 date_str = c.start[:10]
                 existing = db.query(WhoopData).filter_by(date=date_str).first()
