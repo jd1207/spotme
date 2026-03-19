@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api'
+import { CoachInterview } from './coach-interview'
+import type { InterviewMessage } from './coach-interview'
 
 function userKey(key: string): string {
   const match = window.location.pathname.match(/^\/u\/([a-zA-Z0-9_-]+)/)
@@ -11,7 +13,7 @@ interface OnboardingProps {
   onComplete: () => void
 }
 
-type Step = 'welcome' | 'profile' | 'whoop' | 'generating'
+type Step = 'welcome' | 'profile' | 'whoop' | 'coach' | 'generating'
 
 export function Onboarding({ onComplete }: OnboardingProps) {
   const [step, setStep] = useState<Step>('welcome')
@@ -50,23 +52,27 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     }
   }
 
-  const finishOnboarding = async () => {
+  const finishOnboarding = async (messages?: InterviewMessage[]) => {
     setStep('generating')
     setGeneratingStatus('Building your training program...')
     try {
-      await api.intake({
+      const payload: Record<string, string> = {
         name,
         experience_level: experience,
         goals,
         equipment: equipment || 'Full gym',
         training_frequency: frequency,
-      })
+      }
+      if (messages && messages.length > 0) {
+        payload.interview_messages = JSON.stringify(messages)
+      }
+      await api.intake(payload)
       localStorage.setItem(userKey('onboarded'), '1')
       localStorage.setItem(userKey('intake_done'), '1')
       onComplete()
     } catch {
       setGeneratingStatus('Something went wrong. Trying again...')
-      setTimeout(() => finishOnboarding(), 2000)
+      setTimeout(() => finishOnboarding(messages), 2000)
     }
   }
 
@@ -176,8 +182,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
             <div className="onboarding-whoop-connected">
               <span className="onboarding-check">{'\u2713'}</span>
               <p>Whoop connected! Claude can now see your recovery data.</p>
-              <button className="onboarding-cta" onClick={finishOnboarding}>
-                Build My Program
+              <button className="onboarding-cta" onClick={() => setStep('coach')}>
+                Next
               </button>
             </div>
           ) : (
@@ -205,12 +211,19 @@ export function Onboarding({ onComplete }: OnboardingProps) {
               >
                 {whoopStatus === 'connecting' ? 'Connecting...' : 'Connect'}
               </button>
-              <button className="onboarding-skip" onClick={finishOnboarding}>
+              <button className="onboarding-skip" onClick={() => setStep('coach')}>
                 Skip — I don't have a Whoop
               </button>
             </>
           )}
         </div>
+      )}
+
+      {step === 'coach' && (
+        <CoachInterview
+          profile={{ name, experience, goals, frequency, equipment: equipment || 'Full gym' }}
+          onComplete={(msgs) => finishOnboarding(msgs)}
+        />
       )}
 
       {step === 'generating' && (

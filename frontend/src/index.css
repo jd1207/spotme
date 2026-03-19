@@ -382,6 +382,79 @@ button {
   to { transform: rotate(360deg); }
 }
 
+.coach-interview {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  padding: 0 16px;
+  padding-top: env(safe-area-inset-top, 0);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.coach-interview-header {
+  text-align: center;
+  padding: 24px 0 12px;
+  flex-shrink: 0;
+}
+
+.coach-interview-header h2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.coach-interview-progress {
+  font-size: 0.75rem;
+  color: var(--text-disabled);
+}
+
+.coach-interview-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 0;
+  min-height: 0;
+}
+
+.coach-interview-input {
+  display: flex;
+  gap: 8px;
+  padding: 12px 0 calc(16px + var(--safe-bottom));
+  flex-shrink: 0;
+}
+
+.coach-interview-input .onboarding-name-input {
+  flex: 1;
+  text-align: left;
+  max-width: none;
+}
+
+.coach-interview-send {
+  background: var(--accent) !important;
+  color: #fff;
+  font-weight: 600;
+  padding: 0 20px;
+  border-radius: var(--radius);
+  min-height: 48px;
+  font-size: 0.9rem;
+}
+
+.coach-interview-send:disabled {
+  opacity: 0.4;
+}
+
+.coach-interview-actions {
+  padding: 12px 0 calc(16px + var(--safe-bottom));
+  display: flex;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 /* ----------------------------------------------------------------
    intake screen
    ---------------------------------------------------------------- */

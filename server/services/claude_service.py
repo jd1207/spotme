@@ -314,6 +314,41 @@ class ClaudeService:
             "workout_plan": parsed.get("workout_plan"),
         }
 
+    async def generate_interview_questions(self, profile_summary: str) -> list[str]:
+        """generate personalized interview questions for onboarding."""
+        system = (
+            "You are SpotMe, an AI strength coach. Generate 3-5 interview questions "
+            "to learn what you need to build a personalized training program. "
+            "Tailor questions to the athlete's experience level.\n"
+            "For beginners: ask about training history, any injuries, what they enjoy, schedule.\n"
+            "For intermediate/advanced: ask about current lift numbers (squat, bench, deadlift, OHP), "
+            "weak points, PRs they're chasing, injury history, preferred training style.\n"
+            "Return ONLY a JSON array of question strings, nothing else."
+        )
+        raw = await _call_claude(system, f"Athlete profile: {profile_summary}")
+        try:
+            # handle both raw array and code-fenced array
+            import re
+            cleaned = raw.strip()
+            fence = re.search(r"```(?:json)?\s*\n?(\[.*?\])\s*\n?```", cleaned, re.DOTALL)
+            if fence:
+                cleaned = fence.group(1)
+            elif not cleaned.startswith("["):
+                bracket = re.search(r"\[.*\]", cleaned, re.DOTALL)
+                if bracket:
+                    cleaned = bracket.group(0)
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, list) and all(isinstance(q, str) for q in parsed):
+                return parsed[:5]
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return [
+            "What are your current best lifts or recent PRs?",
+            "Any injuries or physical limitations I should know about?",
+            "What does your typical training week look like right now?",
+            "Any specific goals or numbers you're chasing?",
+        ]
+
     async def analyze_form(self, frames_base64: list, context: str) -> dict:
         system = "You are a strength coach analyzing lifting form. Identify issues, suggest corrections, note what looks good."
         message = f"Analyze this lifting form. Context: {context}"
