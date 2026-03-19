@@ -17,7 +17,7 @@ AI-powered workout tracker with Whoop integration. Claude is your coach.
 - Node.js 20+
 - ffmpeg
 - A Claude API key
-- A Whoop account + developer app
+- A Whoop account (Cognito login, no developer app needed)
 
 ### Install
 
@@ -44,9 +44,11 @@ Open `http://your-steam-deck-ip:8000` on your phone.
 ```bash
 cp deploy/spotme.service ~/.config/systemd/user/
 cp deploy/spotme-whoop-sync.* ~/.config/systemd/user/
+cp deploy/spotme-morning.* ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now spotme
 systemctl --user enable --now spotme-whoop-sync.timer
+systemctl --user enable --now spotme-morning.timer
 ```
 
 ## Architecture
@@ -61,7 +63,7 @@ Phone (PWA) <---> Local Server (Steam Deck) <---> Claude API
 - **Frontend:** React + Vite PWA with dynamic Claude-driven layouts
 - **Backend:** Python FastAPI + SQLite
 - **AI:** Claude for coaching, programming, and form analysis
-- **Whoop:** Full biometric read + workout write via [whoop-write-api](https://github.com/jd1207/whoop-write-api)
+- **Whoop:** Full biometric read + workout/journal write via [whoop-write-api](https://github.com/jd1207/whoop-write-api) (Cognito auth, no OAuth)
 
 ## License
 
