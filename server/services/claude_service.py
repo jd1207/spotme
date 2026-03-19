@@ -1,13 +1,12 @@
 from __future__ import annotations
-import asyncio
 import json
 import logging
-import shutil
+import anthropic
 from server.services.layout_service import validate_layout
 
 logger = logging.getLogger(__name__)
 
-CLAUDE_BIN = shutil.which("claude") or "/home/deck/.local/bin/claude"
+MODEL = "claude-sonnet-4-20250514"
 
 SYSTEM_PROMPT = """You are SpotMe, an AI strength coach running inside a workout tracking app. You help the user train, log sets, adjust programming, and provide coaching based on their data.
 
@@ -59,6 +58,32 @@ When Whoop data is available, adjust your coaching:
 
 Always mention the recovery zone when starting a workout. Factor sleep score into recommendations — below 60% sleep suggests shorter session.
 
+## Personalized Coaching Rules
+
+Verbosity scales with deviation: GREEN + normal HRV + good sleep = don't mention Whoop, just coach. YELLOW with minor flags = brief mention. RED or significant deviations = full recommendation.
+
+Signal priority when conflicting: sleep hours > HRV trend > daily recovery score > current strain.
+
+### User-Specific Thresholds
+- Yellow (50-65%) IS BASELINE for this athlete. Full training on yellow days. Only flag recovery below 40% or consecutive reds.
+- Sleep: athlete typically gets 6-7 hours. Don't flag under 7h. Flag: under 5.5h, sleep debt increasing 3+ consecutive days, or short sleep before heavy bench.
+- RED = protect bench, sacrifice legs. Never skip bench on RED. Reduce volume but keep top-end intensity.
+- Heavy bench gating: GREEN = proceed. HIGH YELLOW (55-66%) = proceed, monitor warmup RPE. LOW YELLOW (40-54%) = open with warmups, user decides. RED = recommend reschedule 1 day, cap at 90% if user insists.
+- 315 test day: only on GREEN/high-yellow (55%+), HRV within 15% of 7-day avg, 7+ hours prior sleep.
+- Sauna strain excluded: if strain is high and sauna was logged, subtract sauna strain (~3-5 pts) before adjusting training.
+- Caffeine before 4 PM is normal. Only flag after 4 PM, especially before heavy bench.
+- RPE calibration: same weight feels 0.5-1 RPE harder on yellow vs green. Normal, not regression. Flag only if RPE jumps AND recovery is similar.
+- Lower back: if user reports tightness on rows/deadlifts, don't increase weight, suggest bracing cues.
+- These thresholds calibrate over time. Use RPE feedback as ground truth.
+
+### Tool Behavior
+- Low-risk tools (log activity, update weight): execute then announce. Don't ask permission.
+- Destructive tools (delete activity): confirm with user first.
+- On tool error: say "Whoop disconnected" or "couldn't reach Whoop". Never show technical details.
+
+### User Override
+Always respect user override without nagging. Acknowledge once, then coach at their selected intensity.
+
 ## Meal Tracking
 
 When the user describes a meal or food they ate, estimate the macros and include a "meal" field in your response:
@@ -68,6 +93,13 @@ When tracking a meal, also include an "items" array listing individual food item
 {"description": "chicken and rice", "items": ["200g chicken breast", "Cup of white rice", "Steamed broccoli"], "calories": 650, "protein": 55, "carbs": 60, "fat": 12, "meal_type": "lunch"}
 Always set meal_type to one of: breakfast, lunch, dinner, snack.
 
+When parsing a meal, also extract journal signals and include in your response:
+"journal_signals": {"caffeine": <count>, "alcohol": <bool>}
+- Count caffeinated drinks (coffee, espresso, latte, tea, energy drink, pre-workout)
+- "decaf" = caffeine 0, "coffee with Mike" = caffeine 1
+- Flag alcohol (beer, wine, cocktail, spirits, hard seltzer)
+- "virgin mojito" = alcohol false
+
 Be specific about your estimates. If the user just says "I had chicken and rice", ask for approximate portions. Common estimates:
 - Chicken breast 200g: 330 cal, 62g protein, 0g carbs, 7g fat
 - Cup of white rice: 200 cal, 4g protein, 45g carbs, 0g fat
@@ -76,8 +108,71 @@ Be specific about your estimates. If the user just says "I had chicken and rice"
 RECOVERY_GREEN = 67
 RECOVERY_YELLOW = 34
 
+WHOOP_TOOLS = [
+    {
+        "name": "create_whoop_activity",
+        "description": "Log an activity to the user's Whoop. Use for sauna, ice bath, meditation, yoga, stretching, running, cycling, hiking, swimming, walking.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "activity_type": {"type": "string", "enum": ["sauna", "ice_bath", "meditation", "yoga", "stretching", "running", "cycling", "hiking", "swimming", "walking"]},
+                "duration_minutes": {"type": "integer"},
+                "start_time": {"type": "string", "description": "ISO 8601 timestamp, optional"},
+            },
+            "required": ["activity_type", "duration_minutes"],
+        },
+    },
+    {
+        "name": "update_whoop_weight",
+        "description": "Update body weight on Whoop.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"weight_lbs": {"type": "number"}},
+            "required": ["weight_lbs"],
+        },
+    },
+    {
+        "name": "set_whoop_alarm",
+        "description": "Set or disable Whoop alarm.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "time": {"type": "string", "description": "HH:MM format"},
+                "enabled": {"type": "boolean"},
+            },
+            "required": ["time"],
+        },
+    },
+    {
+        "name": "delete_whoop_activity",
+        "description": "Delete an activity from Whoop. Confirm with user before calling.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"activity_id": {"type": "string"}},
+            "required": ["activity_id"],
+        },
+    },
+    {
+        "name": "list_whoop_activities",
+        "description": "List recent Whoop activities to find an activity ID for deletion or reference.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"limit": {"type": "integer", "default": 5}},
+        },
+    },
+    {
+        "name": "search_exercise_catalog",
+        "description": "Search Whoop exercise catalog by name, equipment, or muscle group.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+        },
+    },
+]
 
-def assemble_context(program, workout, whoop, history, profile=None, memory=None, active_workout=None, set_history=None, meal_totals=None):
+
+def assemble_context(program, workout, whoop, history, profile=None, memory=None, active_workout=None, set_history=None, meal_totals=None, db=None):
     parts = []
     if profile:
         profile_parts = [f"User: {profile.get('name', 'unknown')}"]
@@ -116,6 +211,50 @@ def assemble_context(program, workout, whoop, history, profile=None, memory=None
         sleep_str = f" | Sleep {whoop.get('sleep_score', 'N/A')}%{sleep_hrs}" if whoop.get('sleep_score') else ""
         parts.append(f"Whoop [{zone}]: Recovery {recovery or 'N/A'}% | HRV {whoop.get('hrv', 'N/A')}{sleep_str}{strain_str} | RHR {whoop.get('resting_hr', 'N/A')}")
 
+    # 7-day hrv trend
+    if whoop and whoop.get("hrv") and db:
+        from sqlalchemy import func as sqlfunc
+        from server.models import WhoopData
+        hrv_avg = db.query(sqlfunc.avg(WhoopData.hrv)).filter(
+            WhoopData.hrv.isnot(None)
+        ).scalar()
+        if hrv_avg:
+            today_hrv = whoop["hrv"]
+            hrv_delta = ((today_hrv - hrv_avg) / hrv_avg) * 100
+            parts.append(f"HRV trend: today {today_hrv}ms vs 7-day avg {hrv_avg:.0f}ms ({hrv_delta:+.0f}%)")
+
+    # stale data flag
+    if whoop and db:
+        from server.config import today_eastern
+        whoop_date = whoop.get("date")
+        if whoop_date and whoop_date != today_eastern():
+            parts.append("Note: Whoop data is from yesterday, may not reflect current readiness")
+
+    # tool/catalog availability
+    if db:
+        from server.models import WhoopToken, ExerciseCatalog
+        if db.query(WhoopToken).first():
+            parts.append("Whoop tools available: you can log activities, update weight, set alarm")
+        if db.query(ExerciseCatalog).first():
+            parts.append("Exercise catalog loaded: use search_exercise_catalog to map exercises to Whoop IDs")
+
+    # one-time education messages
+    if db:
+        from server.models import SystemMemory
+        if db.query(WhoopToken).first():
+            if not db.query(SystemMemory).filter_by(key="whoop_first_workout_shown").first():
+                parts.append(
+                    "ONBOARDING: This is the user's first workout with Whoop connected. "
+                    "Acknowledge briefly that you can see their recovery data and will "
+                    "factor it into training. Keep it short. Don't repeat this."
+                )
+            if not db.query(SystemMemory).filter_by(key="whoop_journal_education_shown").first():
+                parts.append(
+                    "ONBOARDING: On the user's first meal log with Whoop connected, briefly mention "
+                    "you're tracking caffeine and alcohol to their Whoop journal. Say you won't "
+                    "mention it again unless something looks off."
+                )
+
     if set_history:
         parts.append("Recent sets (last 3 workouts):")
         for entry in set_history[:15]:
@@ -134,14 +273,25 @@ def assemble_context(program, workout, whoop, history, profile=None, memory=None
 
 
 class ClaudeService:
-    def __init__(self, api_key: str = ""):
-        self.api_key = api_key
 
-    async def chat(self, message: str, context: str) -> dict:
+    async def chat(self, message: str, context: str, db=None) -> dict:
         system = f"{SYSTEM_PROMPT}\n\nCurrent context:\n{context}"
         try:
-            raw_text = await _call_claude(system, message)
-        except RuntimeError as e:
+            from server.models import WhoopToken
+            whoop_connected = db.query(WhoopToken).first() is not None if db else False
+
+            if whoop_connected:
+                from server.services.whoop_tools import execute_whoop_tool
+                raw_text = await _call_claude_with_tools(
+                    system_prompt=system,
+                    message=message,
+                    tools=WHOOP_TOOLS,
+                    tool_executor=execute_whoop_tool,
+                    db=db,
+                )
+            else:
+                raw_text = await _call_claude(system, message)
+        except Exception as e:
             logger.error("claude call failed: %s", e)
             return {"response": "Having trouble reaching Claude right now. Try again in a sec.", "layout": None, "profile": None, "memory_update": None, "set_suggestion": None, "meal": None, "workout_plan": None}
         try:
@@ -186,23 +336,61 @@ def _extract_json(text: str) -> str:
     return stripped
 
 
-async def _call_claude(system: str, message: str) -> str:
-    proc = await asyncio.create_subprocess_exec(
-        CLAUDE_BIN, "--print",
-        "--append-system-prompt", system,
-        "-p", message,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+async def _call_claude(system_prompt: str, message: str) -> str:
+    client = anthropic.AsyncAnthropic()
+    response = await client.messages.create(
+        model=MODEL,
+        max_tokens=4096,
+        system=system_prompt,
+        messages=[{"role": "user", "content": message}],
     )
-    try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
-        raise RuntimeError("claude cli timed out after 120s")
-    if proc.returncode != 0:
-        error = stderr.decode().strip()
-        logger.error("claude cli error: %s", error)
-        raise RuntimeError(f"claude cli failed: {error}")
-    raw = stdout.decode().strip()
-    return _extract_json(raw)
+    raw = response.content[0].text
+    return _extract_json(raw.strip())
+
+
+MAX_TOOL_ITERATIONS = 3
+
+
+async def _call_claude_with_tools(
+    system_prompt: str,
+    message: str,
+    tools: list[dict],
+    tool_executor,
+    db,
+    history: list[dict] | None = None,
+) -> str:
+    """call claude with tool-use loop, executing tools until final text response."""
+    client = anthropic.AsyncAnthropic()
+    messages = list(history) if history else []
+    messages.append({"role": "user", "content": message})
+
+    for _ in range(MAX_TOOL_ITERATIONS):
+        response = await client.messages.create(
+            model=MODEL,
+            max_tokens=4096,
+            system=system_prompt,
+            messages=messages,
+            tools=tools,
+        )
+
+        if response.stop_reason != "tool_use":
+            # final text response
+            text_blocks = [b.text for b in response.content if b.type == "text"]
+            raw = " ".join(text_blocks)
+            return _extract_json(raw.strip())
+
+        # execute each tool call
+        messages.append({"role": "assistant", "content": response.content})
+        tool_results = []
+        for block in response.content:
+            if block.type == "tool_use":
+                result = await tool_executor(block.name, block.input, db)
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": json.dumps(result),
+                })
+        messages.append({"role": "user", "content": tool_results})
+
+    # max iterations reached
+    return '{"response": "I had trouble completing that action.", "layout": null}'

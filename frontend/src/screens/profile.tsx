@@ -8,13 +8,9 @@ interface ProfileProps {
 
 export function Profile({ onReplayTutorial }: ProfileProps) {
   const [whoopConnected, setWhoopConnected] = useState<boolean | null>(null)
-  const [oauthAvailable, setOauthAvailable] = useState(false)
-  const [writeEnabled, setWriteEnabled] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState('')
-  const [connecting, setConnecting] = useState(false)
   const [todayStats, setTodayStats] = useState<WhoopStats | null>(null)
-  const [testingWrite, setTestingWrite] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loggingIn, setLoggingIn] = useState(false)
@@ -51,46 +47,15 @@ export function Profile({ onReplayTutorial }: ProfileProps) {
     api.whoopStatus()
       .then(s => {
         setWhoopConnected(s.connected)
-        setOauthAvailable(s.oauth_available)
-        setWriteEnabled(s.write_enabled)
         if (s.connected) fetchLatest()
       })
       .catch(() => {})
-
-    const params = new URLSearchParams(window.location.search)
-    const whoopParam = params.get('whoop')
-    if (whoopParam === 'connected') {
-      setWhoopConnected(true)
-      setSyncResult('Whoop connected! Syncing...')
-      window.history.replaceState({}, '', '/')
-      setTimeout(() => doSync(), 500)
-    } else if (whoopParam === 'error') {
-      setSyncResult(`Connection failed: ${params.get('reason') || 'unknown'}`)
-      window.history.replaceState({}, '', '/')
-    }
   }, [])
-
-  const handleConnect = async () => {
-    setConnecting(true)
-    try {
-      const result = await api.whoopAuthorize()
-      if (result.url) {
-        window.location.href = result.url
-      } else {
-        setSyncResult(result.error || 'OAuth not configured')
-        setConnecting(false)
-      }
-    } catch {
-      setSyncResult('Failed to start OAuth')
-      setConnecting(false)
-    }
-  }
 
   const handleDisconnect = async () => {
     try {
       await api.whoopDisconnect()
       setWhoopConnected(false)
-      setWriteEnabled(false)
       setTodayStats(null)
       setSyncResult('Disconnected')
     } catch {
@@ -104,11 +69,12 @@ export function Profile({ onReplayTutorial }: ProfileProps) {
     setSyncResult('')
     try {
       const result = await api.whoopLogin(email, password)
-      if (result.success) {
-        setWriteEnabled(true)
+      if (result.connected || result.success) {
+        setWhoopConnected(true)
         setEmail('')
         setPassword('')
-        setSyncResult('Write access enabled!')
+        setSyncResult('Connected! Syncing...')
+        setTimeout(() => doSync(), 500)
       } else {
         setSyncResult(result.error || 'Login failed')
       }
@@ -116,23 +82,6 @@ export function Profile({ onReplayTutorial }: ProfileProps) {
       setSyncResult('Login failed')
     } finally {
       setLoggingIn(false)
-    }
-  }
-
-  const handleTestWrite = async () => {
-    setTestingWrite(true)
-    setSyncResult('')
-    try {
-      const result = await api.whoopTestWrite()
-      if (result.success) {
-        setSyncResult('Wrote to Whoop! Check your app for a 1-min stretching activity')
-      } else {
-        setSyncResult(result.error || 'Write failed')
-      }
-    } catch {
-      setSyncResult('Write test failed')
-    } finally {
-      setTestingWrite(false)
     }
   }
 
@@ -158,17 +107,32 @@ export function Profile({ onReplayTutorial }: ProfileProps) {
           </span>
         </div>
 
-        {!whoopConnected && oauthAvailable && whoopConnected !== null && (
-          <div className="profile-item">
-            <button className="profile-connect-btn" onClick={handleConnect} disabled={connecting}>
-              {connecting ? 'Redirecting...' : 'Connect Whoop'}
+        {!whoopConnected && whoopConnected !== null && (
+          <div className="whoop-login-form">
+            <span className="profile-item-hint">
+              Connect to sync workouts, track recovery, and get coaching adjusted to your body.
+            </span>
+            <input
+              className="whoop-input"
+              type="email"
+              placeholder="Whoop email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+            />
+            <input
+              className="whoop-input"
+              type="password"
+              placeholder="Whoop password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleLogin()}
+            />
+            <button className="profile-sync-btn" onClick={handleLogin} disabled={loggingIn}>
+              {loggingIn ? 'Connecting...' : 'Connect Whoop'}
             </button>
-          </div>
-        )}
-
-        {!whoopConnected && !oauthAvailable && whoopConnected !== null && (
-          <div className="profile-item">
-            <span className="profile-item-value">OAuth not configured</span>
+            <span className="profile-item-hint" style={{fontSize: '0.75rem', opacity: 0.6}}>
+              Password is used once to authenticate, then discarded.
+            </span>
           </div>
         )}
 
@@ -188,39 +152,6 @@ export function Profile({ onReplayTutorial }: ProfileProps) {
                 {syncing ? 'Syncing...' : 'Sync Now'}
               </button>
             </div>
-
-            {writeEnabled ? (
-              <div className="profile-item">
-                <button className="profile-test-btn" onClick={handleTestWrite} disabled={testingWrite}>
-                  {testingWrite ? 'Writing...' : 'Test Write to Whoop'}
-                </button>
-              </div>
-            ) : (
-              <div className="whoop-login-form">
-                <span className="profile-item-hint">
-                  Enter Whoop login to enable writing workouts
-                </span>
-                <input
-                  className="whoop-input"
-                  type="email"
-                  placeholder="Whoop email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                />
-                <input
-                  className="whoop-input"
-                  type="password"
-                  placeholder="Whoop password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleLogin()}
-                />
-                <button className="profile-sync-btn" onClick={handleLogin} disabled={loggingIn}>
-                  {loggingIn ? 'Logging in...' : 'Enable Write Access'}
-                </button>
-              </div>
-            )}
-
             <div className="profile-item">
               <button className="profile-action-btn" onClick={handleDisconnect}>
                 Disconnect

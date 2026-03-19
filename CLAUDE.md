@@ -32,9 +32,10 @@ journalctl --user -u spotme -f                # tail logs
 
 - `server/` — Python FastAPI backend
   - `routes/` — API endpoints (all prefixed `/api`)
-  - `services/` — business logic (claude, whoop, video, layout)
+  - `services/` — business logic (claude, whoop, whoop_tools, video, layout)
   - `models.py` — SQLAlchemy ORM models
   - `schemas.py` — Pydantic request/response DTOs
+- `alembic/` — Database migrations
 - `frontend/src/` — React TypeScript PWA
   - `components/` — 10 layout-driven UI components
   - `screens/` — 5 full-page views
@@ -42,9 +43,16 @@ journalctl --user -u spotme -f                # tail logs
 - `tests/` — pytest suite
 - `deploy/` — systemd service files
 
-## Unstable Dependency: whoop-write-api
+## Whoop Integration (v0.4)
 
-The Whoop write API uses reverse-engineered endpoints that can break without notice.
+Uses whoop-write-api v0.4 with Cognito auth (no OAuth). Reverse-engineered — can break.
+
+**Auth:** Single Cognito login via `CognitoAuth().login()`. Tokens stored in `WhoopToken` table.
+`get_whoop_client(db)` creates a client with auto-refresh from DB tokens.
+
+**Auto-sync:** Workouts sync to Whoop on completion with `DetailedExercise` format.
+Meals extract journal signals (caffeine, alcohol) and sync to Whoop journal.
+Biometric sync uses 2-hour staleness threshold with async lock.
 
 **Rules:**
 - always lazy-import whoop inside functions, never at module top level
@@ -53,12 +61,17 @@ The Whoop write API uses reverse-engineered endpoints that can break without not
 - the app must work 100% without whoop — it's a nice-to-have, not a dependency
 - when whoop endpoints change, update whoop-write-api repo first, then bump here
 - test whoop integration with mocks by default; real API calls only in manual testing
+- whoop availability is determined by presence of `WhoopToken` row, not env vars
 
 ## Claude API Integration
 
 - use `anthropic.AsyncAnthropic` (async only)
-- model: `claude-sonnet-4-20250514` (defined in `claude_service.py`)
+- model: `claude-sonnet-4-20250514` (defined as `MODEL` in `claude_service.py`)
 - system prompt + context assembled server-side via `assemble_context()`
+- tool-use loop: `_call_claude_with_tools()` handles multi-turn tool calls (max 3 iterations)
+- when whoop is connected, claude has 6 tools: create/delete activity, update weight, set alarm, list activities, search exercise catalog
+- tool schemas defined in `WHOOP_TOOLS` list in `claude_service.py`
+- tool execution dispatched via `execute_whoop_tool()` in `whoop_tools.py`
 - claude responses with layouts must pass through `validate_layout()` before reaching frontend
 - invalid JSON from claude falls back to raw text with `layout: None`
 - send last 5 messages of history, not full conversation

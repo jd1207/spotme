@@ -11,7 +11,7 @@ from server.models import (
     Program, Workout, Exercise, Set, WhoopData,
     Conversation, UserProfile, SystemMemory, Meal,
 )
-from server.config import settings, today_eastern
+from server.config import today_eastern
 from server.utils import recovery_zone
 
 router = APIRouter()
@@ -25,26 +25,26 @@ def _maybe_trigger_whoop_sync(db: Session):
     has_today = db.query(WhoopData).filter_by(date=today).first()
     if has_today:
         return
-    if not settings.whoop_access_token:
+    from server.models import WhoopToken
+    if not db.query(WhoopToken).first():
         return
     async def _do_sync():
         try:
-            from server.services.whoop_service import create_whoop_client, sync_whoop_biometrics
+            from server.services.whoop_service import sync_whoop_biometrics
             from server.database import SessionLocal
             sync_db = SessionLocal()
             try:
-                client = create_whoop_client()
-                await sync_whoop_biometrics(sync_db, client)
+                await sync_whoop_biometrics(sync_db, force=False)
             finally:
                 sync_db.close()
         except Exception:
-            pass  # sync failures are non-blocking
+            pass
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
             loop.create_task(_do_sync())
     except RuntimeError:
-        pass  # no event loop available
+        pass
 
 
 def _get_today_whoop(db: Session) -> dict | None:
@@ -150,12 +150,12 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             "fat": round(meal_row.fat or 0, 1),
         }
 
-    context = assemble_context(None, None, whoop_dict, history_dicts, profile_dict, memory_text, workout_context, set_history=set_history, meal_totals=meal_totals)
+    context = assemble_context(None, None, whoop_dict, history_dicts, profile_dict, memory_text, workout_context, set_history=set_history, meal_totals=meal_totals, db=db)
     today = today_eastern()
     if request_date != today:
         context += f"\n\nNote: athlete is reviewing {request_date} on {today}."
     service = ClaudeService()
-    result = await service.chat(request.message, context)
+    result = await service.chat(request.message, context, db=db)
 
     # auto-save profile
     profile_data = result.get("profile")
@@ -191,6 +191,9 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         items_json = None
         if meal_data.get("items"):
             items_json = json_lib.dumps(meal_data["items"])
+        journal_signals = None
+        if meal_data.get("journal_signals"):
+            journal_signals = json_lib.dumps(meal_data["journal_signals"])
         db.add(Meal(
             date=request_date,
             description=meal_data.get("description", ""),
@@ -200,6 +203,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             fat=meal_data.get("fat"),
             meal_type=meal_data.get("meal_type"),
             items=items_json,
+            journal_signals=journal_signals,
         ))
 
     # auto-create/update workout from plan
@@ -217,6 +221,28 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     db.add(Conversation(role="user", content=request.message, context_type="chat", workout_id=request.workout_id, date=request_date))
     db.add(Conversation(role="assistant", content=result["response"], context_type="chat", workout_id=request.workout_id, date=request_date))
     db.commit()
+
+    # mark onboarding flags after successful response
+    from server.models import WhoopToken
+    if db.query(WhoopToken).first():
+        # mark first workout shown if this was a workout context
+        if workout_context and not db.query(SystemMemory).filter_by(key="whoop_first_workout_shown").first():
+            db.add(SystemMemory(key="whoop_first_workout_shown", content="true"))
+            db.commit()
+        # mark journal education shown if a meal was logged
+        if meal_data and not db.query(SystemMemory).filter_by(key="whoop_journal_education_shown").first():
+            db.add(SystemMemory(key="whoop_journal_education_shown", content="true"))
+            db.commit()
+
+    # sync journal to whoop if a meal was logged
+    if meal_data and isinstance(meal_data, dict):
+        from server.models import WhoopToken
+        if db.query(WhoopToken).first():
+            try:
+                from server.services.whoop_service import sync_journal_to_whoop
+                asyncio.ensure_future(sync_journal_to_whoop(db, request_date))
+            except Exception:
+                pass
     return ChatResponse(
         response=result["response"],
         layout=result.get("layout"),
@@ -312,7 +338,7 @@ async def intake(data: dict, db: Session = Depends(get_db)):
             "training_frequency": profile.training_frequency,
             "injuries_notes": profile.injuries_notes,
         })
-        result = await service.chat(prompt, context)
+        result = await service.chat(prompt, context, db=db)
 
         # save memory — use Claude's structured update if available, fall back to raw plan
         memory_update = result.get("memory_update") or plan_text
