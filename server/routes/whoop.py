@@ -62,9 +62,8 @@ async def sync_whoop(db: Session = Depends(get_db)):
     if not token:
         return {"error": "whoop not connected", "synced": 0}
     try:
-        from server.services.whoop_service import get_whoop_client, sync_whoop_biometrics
-        client = get_whoop_client(db)
-        return await sync_whoop_biometrics(db, client)
+        from server.services.whoop_service import sync_whoop_biometrics
+        return await sync_whoop_biometrics(db, force=True)
     except ImportError:
         return {"error": "whoop-write-api not installed", "synced": 0}
     except Exception as e:

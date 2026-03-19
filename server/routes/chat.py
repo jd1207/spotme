@@ -30,22 +30,21 @@ def _maybe_trigger_whoop_sync(db: Session):
         return
     async def _do_sync():
         try:
-            from server.services.whoop_service import get_whoop_client, sync_whoop_biometrics
+            from server.services.whoop_service import sync_whoop_biometrics
             from server.database import SessionLocal
             sync_db = SessionLocal()
             try:
-                client = get_whoop_client(sync_db)
-                await sync_whoop_biometrics(sync_db, client)
+                await sync_whoop_biometrics(sync_db, force=False)
             finally:
                 sync_db.close()
         except Exception:
-            pass  # sync failures are non-blocking
+            pass
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
             loop.create_task(_do_sync())
     except RuntimeError:
-        pass  # no event loop available
+        pass
 
 
 def _get_today_whoop(db: Session) -> dict | None:

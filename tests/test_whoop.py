@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime
 from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -85,12 +86,15 @@ async def test_sync_biometrics_happy_path(db):
     mock_cycle.start = "2026-03-16T00:00:00Z"
     mock_cycle.strain = 12.5
 
-    client = AsyncMock()
-    client.get_recovery.return_value = [mock_recovery]
-    client.get_sleep.return_value = [mock_sleep]
-    client.get_cycles.return_value = [mock_cycle]
+    mock_client = AsyncMock()
+    mock_client.get_recovery.return_value = [mock_recovery]
+    mock_client.get_sleep.return_value = [mock_sleep]
+    mock_client.get_cycles.return_value = [mock_cycle]
 
-    result = await sync_whoop_biometrics(db, client)
+    with patch("server.services.whoop_service.get_whoop_client") as mock_factory:
+        mock_factory.return_value = mock_client
+        result = await sync_whoop_biometrics(db, force=True)
+
     assert result["synced"] == 1
 
     whoop = db.query(WhoopData).filter_by(date="2026-03-16").first()
@@ -105,12 +109,14 @@ async def test_sync_biometrics_happy_path(db):
 async def test_sync_biometrics_api_error(db):
     from server.services.whoop_service import sync_whoop_biometrics
 
-    client = AsyncMock()
-    # lazy-import the exception like production code does
+    mock_client = AsyncMock()
     from whoop import WhoopAPIError
-    client.get_recovery.side_effect = WhoopAPIError("endpoint moved", status_code=404)
+    mock_client.get_recovery.side_effect = WhoopAPIError("endpoint moved", status_code=404)
 
-    result = await sync_whoop_biometrics(db, client)
+    with patch("server.services.whoop_service.get_whoop_client") as mock_factory:
+        mock_factory.return_value = mock_client
+        result = await sync_whoop_biometrics(db, force=True)
+
     assert result["synced"] == 0
     assert "endpoint moved" in result["error"]
 
@@ -128,12 +134,15 @@ async def test_sync_biometrics_skips_duplicates(db):
     mock_recovery.hrv = 72.5
     mock_recovery.resting_hr = 50
 
-    client = AsyncMock()
-    client.get_recovery.return_value = [mock_recovery]
-    client.get_sleep.return_value = []
-    client.get_cycles.return_value = []
+    mock_client = AsyncMock()
+    mock_client.get_recovery.return_value = [mock_recovery]
+    mock_client.get_sleep.return_value = []
+    mock_client.get_cycles.return_value = []
 
-    result = await sync_whoop_biometrics(db, client)
+    with patch("server.services.whoop_service.get_whoop_client") as mock_factory:
+        mock_factory.return_value = mock_client
+        result = await sync_whoop_biometrics(db, force=True)
+
     assert result["synced"] == 0
 
     whoop = db.query(WhoopData).filter_by(date="2026-03-16").first()
@@ -380,17 +389,38 @@ async def test_sync_biometrics_cycles_fail_graceful(db):
     mock_recovery.hrv = 65.0
     mock_recovery.resting_hr = 52
 
-    client = AsyncMock()
-    client.get_recovery.return_value = [mock_recovery]
-    client.get_sleep.return_value = []
-    client.get_cycles.side_effect = WhoopAPIError("authorization was not valid", status_code=401)
+    mock_client = AsyncMock()
+    mock_client.get_recovery.return_value = [mock_recovery]
+    mock_client.get_sleep.return_value = []
+    mock_client.get_cycles.side_effect = WhoopAPIError("authorization was not valid", status_code=401)
 
-    result = await sync_whoop_biometrics(db, client)
+    with patch("server.services.whoop_service.get_whoop_client") as mock_factory:
+        mock_factory.return_value = mock_client
+        result = await sync_whoop_biometrics(db, force=True)
+
     assert result["synced"] == 1
     assert "strain unavailable" in result["warnings"][0]
 
     whoop = db.query(WhoopData).filter_by(date="2026-03-17").first()
     assert whoop.recovery_score == 80.0
+
+
+@pytest.mark.asyncio
+async def test_sync_skips_when_fresh(db):
+    """sync_whoop_biometrics skips if data is less than 2 hours old."""
+    from datetime import timedelta
+    from server.config import today_eastern
+
+    db.add(WhoopData(
+        date=today_eastern(),
+        recovery_score=78.0,
+        synced_at=datetime.utcnow() - timedelta(minutes=30),
+    ))
+    db.commit()
+
+    from server.services.whoop_service import sync_whoop_biometrics
+    result = await sync_whoop_biometrics(db, force=False)
+    assert result["skipped"] is True
 
 
 def test_v04_schema_columns(db):

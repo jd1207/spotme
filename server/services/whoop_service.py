@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -9,6 +10,9 @@ from server.models import WhoopData, WhoopSyncQueue, Workout, Exercise, Set
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
+STALENESS_THRESHOLD = 7200  # 2 hours in seconds
+
+_sync_lock = asyncio.Lock()
 
 
 def get_whoop_client(db):
@@ -39,53 +43,69 @@ def get_whoop_client(db):
 
 
 
-async def sync_whoop_biometrics(db: Session, whoop_client):
-    from whoop import WhoopAPIError
+async def sync_whoop_biometrics(db: Session, force=False):
+    """sync biometrics from whoop, skipping if data is fresh."""
+    async with _sync_lock:
+        if not force:
+            from server.config import today_eastern
+            latest = db.query(WhoopData).filter(
+                WhoopData.date == today_eastern()
+            ).first()
+            if latest and latest.synced_at:
+                age = (datetime.utcnow() - latest.synced_at).total_seconds()
+                if age < STALENESS_THRESHOLD:
+                    return {"skipped": True, "reason": "fresh"}
 
-    try:
-        recoveries = await whoop_client.get_recovery()
-        sleeps = await whoop_client.get_sleep()
-    except WhoopAPIError as e:
-        logger.warning("whoop biometric sync failed: %s", e)
-        return {"error": str(e), "synced": 0}
+        try:
+            client = get_whoop_client(db)
+        except Exception as e:
+            return {"error": str(e), "synced": 0}
 
-    synced = 0
-    warnings = []
-    for r in recoveries:
-        date_str = r.created_at[:10]
-        existing = db.query(WhoopData).filter_by(date=date_str).first()
-        if not existing:
-            db.add(WhoopData(
-                date=date_str,
-                recovery_score=r.recovery_score,
-                hrv=r.hrv,
-                resting_hr=int(r.resting_hr),
-            ))
-            synced += 1
-    for s in sleeps:
-        date_str = s.created_at[:10]
-        existing = db.query(WhoopData).filter_by(date=date_str).first()
-        if existing:
-            existing.sleep_score = s.performance
-            existing.sleep_duration = s.total_in_bed_hours
+        from whoop import WhoopAPIError
+        try:
+            recoveries = await client.get_recovery()
+            sleeps = await client.get_sleep()
+        except WhoopAPIError as e:
+            logger.warning("whoop biometric sync failed: %s", e)
+            return {"error": str(e), "synced": 0}
 
-    # strain from cycles — fetched independently since scope may not be granted
-    try:
-        cycles = await whoop_client.get_cycles()
-        for c in cycles:
-            date_str = c.start[:10]
+        synced = 0
+        warnings = []
+        for r in recoveries:
+            date_str = r.created_at[:10]
+            existing = db.query(WhoopData).filter_by(date=date_str).first()
+            if not existing:
+                db.add(WhoopData(
+                    date=date_str,
+                    recovery_score=r.recovery_score,
+                    hrv=r.hrv,
+                    resting_hr=int(r.resting_hr),
+                ))
+                synced += 1
+        for s in sleeps:
+            date_str = s.created_at[:10]
             existing = db.query(WhoopData).filter_by(date=date_str).first()
             if existing:
-                existing.strain = c.strain
-    except WhoopAPIError as e:
-        logger.warning("whoop cycle/strain sync skipped: %s", e)
-        warnings.append(f"strain unavailable: {e}")
+                existing.sleep_score = s.performance
+                existing.sleep_duration = s.total_in_bed_hours
 
-    db.commit()
-    result = {"synced": synced}
-    if warnings:
-        result["warnings"] = warnings
-    return result
+        # strain from cycles — fetched independently since scope may not be granted
+        try:
+            cycles = await client.get_cycles()
+            for c in cycles:
+                date_str = c.start[:10]
+                existing = db.query(WhoopData).filter_by(date=date_str).first()
+                if existing:
+                    existing.strain = c.strain
+        except WhoopAPIError as e:
+            logger.warning("whoop cycle/strain sync skipped: %s", e)
+            warnings.append(f"strain unavailable: {e}")
+
+        db.commit()
+        result = {"synced": synced}
+        if warnings:
+            result["warnings"] = warnings
+        return result
 
 
 async def push_workout_to_whoop(db: Session, workout_id: int):
