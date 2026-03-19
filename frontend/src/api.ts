@@ -1,4 +1,10 @@
-const BASE = '/api'
+// detect /u/{user_id}/ prefix for multi-user routing
+function getApiBase(): string {
+  const match = window.location.pathname.match(/^\/u\/([a-zA-Z0-9_-]+)/)
+  return match ? `/u/${match[1]}/api` : '/api'
+}
+
+const BASE = getApiBase()
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const resp = await fetch(`${BASE}${path}`, { headers: { 'Content-Type': 'application/json' }, ...options })

@@ -1,151 +1,219 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
+import { api } from '../api'
 
 interface OnboardingProps {
   onComplete: () => void
 }
 
-interface Slide {
-  key: string
-  render: (onComplete?: () => void) => React.ReactNode
-}
-
-const slides: Slide[] = [
-  {
-    key: 'welcome',
-    render: () => (
-      <>
-        <span className="onboarding-emoji">{'\uD83D\uDCAA'}</span>
-        <h1>SpotMe</h1>
-        <h2>Your AI Training Partner</h2>
-        <p>An AI coach that learns how you train, adapts to your body, and gets smarter every session.</p>
-      </>
-    ),
-  },
-  {
-    key: 'how-it-works',
-    render: () => (
-      <>
-        <span className="onboarding-label">HOW IT WORKS</span>
-        <h2>Just talk to Claude</h2>
-        <div className="onboarding-chat-examples">
-          <div className="onboarding-bubble user">"225 for 5, felt easy"</div>
-          <div className="onboarding-bubble assistant">"Bumping to 235 next set. You've got 3 more reps in you."</div>
-          <div className="onboarding-bubble user">"What should I do for accessories?"</div>
-          <div className="onboarding-bubble assistant">"Based on your program, try RDLs 3x10 then leg curls."</div>
-        </div>
-      </>
-    ),
-  },
-  {
-    key: 'learns',
-    render: () => (
-      <>
-        <span className="onboarding-label">GETS SMARTER</span>
-        <h2>Every session makes it better</h2>
-        <div className="onboarding-features">
-          <div className="onboarding-feature-card">
-            <strong>Adapts weights</strong>
-            <p>Adjusts suggestions based on your RPE and progression</p>
-          </div>
-          <div className="onboarding-feature-card">
-            <strong>Reads recovery</strong>
-            <p>Uses Whoop HRV and sleep to calibrate intensity</p>
-          </div>
-          <div className="onboarding-feature-card">
-            <strong>Remembers preferences</strong>
-            <p>Learns your exercise selection, rest times, and style</p>
-          </div>
-        </div>
-      </>
-    ),
-  },
-  {
-    key: 'tips',
-    render: () => (
-      <>
-        <span className="onboarding-label">PRO TIPS</span>
-        <h2>Quick Tips</h2>
-        <ol className="onboarding-tips">
-          <li><strong>Say how it felt</strong> — RPE helps Claude dial in your weights</li>
-          <li><strong>Ask anything</strong> — form cues, substitutions, program changes</li>
-          <li><strong>Override anytime</strong> — Claude suggests, you decide</li>
-          <li><strong>Check the top bar</strong> — see your workout progress at a glance</li>
-        </ol>
-      </>
-    ),
-  },
-  {
-    key: 'start',
-    render: (onComplete?: () => void) => (
-      <>
-        <span className="onboarding-emoji">{'\uD83C\uDFC6'}</span>
-        <h2>Ready to train</h2>
-        <p>Start by telling Claude what you want to work on, or let it suggest based on your program.</p>
-        <button className="onboarding-cta" onClick={onComplete}>
-          Start Training
-        </button>
-      </>
-    ),
-  },
-]
-
-const SWIPE_THRESHOLD = 50
+type Step = 'welcome' | 'profile' | 'whoop' | 'generating'
 
 export function Onboarding({ onComplete }: OnboardingProps) {
-  const [currentSlide, setCurrentSlide] = useState(0)
-  const touchStartX = useRef(0)
+  const [step, setStep] = useState<Step>('welcome')
+  const [name, setName] = useState('')
+  const [experience, setExperience] = useState('')
+  const [goals, setGoals] = useState('')
+  const [frequency, setFrequency] = useState('')
+  const [equipment, setEquipment] = useState('')
+  const [showEquipment, setShowEquipment] = useState(false)
+  const [whoopEmail, setWhoopEmail] = useState('')
+  const [whoopPassword, setWhoopPassword] = useState('')
+  const [whoopStatus, setWhoopStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
+  const [whoopError, setWhoopError] = useState('')
+  const [generatingStatus, setGeneratingStatus] = useState('')
 
-  const handleComplete = () => {
-    localStorage.setItem('spotme_onboarded', '1')
-    onComplete()
-  }
+  const experienceOptions = ['Beginner', 'Intermediate', 'Advanced']
+  const goalOptions = ['Strength', 'Hypertrophy', 'Conditioning', 'General fitness']
+  const freqOptions = ['2x/week', '3x/week', '4x/week', '5x/week', '6x/week']
 
-  const goTo = (index: number) => {
-    if (index >= 0 && index < slides.length) {
-      setCurrentSlide(index)
+  const canSubmitProfile = name.trim() && experience && goals && frequency
+
+  const connectWhoop = async () => {
+    setWhoopStatus('connecting')
+    setWhoopError('')
+    try {
+      const result = await api.whoopLogin(whoopEmail, whoopPassword)
+      if (result.connected || result.success) {
+        setWhoopStatus('connected')
+      } else {
+        setWhoopStatus('error')
+        setWhoopError(result.error || 'Connection failed')
+      }
+    } catch {
+      setWhoopStatus('error')
+      setWhoopError('Could not connect. Check your credentials.')
     }
   }
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX
-  }
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    const delta = touchStartX.current - e.changedTouches[0].clientX
-    if (Math.abs(delta) > SWIPE_THRESHOLD) {
-      if (delta > 0) {
-        goTo(currentSlide + 1)
-      } else {
-        goTo(currentSlide - 1)
-      }
+  const finishOnboarding = async () => {
+    setStep('generating')
+    setGeneratingStatus('Building your training program...')
+    try {
+      await api.intake({
+        name,
+        experience_level: experience,
+        goals,
+        equipment: equipment || 'Full gym',
+        training_frequency: frequency,
+      })
+      localStorage.setItem('spotme_onboarded', '1')
+      localStorage.setItem('spotme_intake_done', '1')
+      onComplete()
+    } catch {
+      setGeneratingStatus('Something went wrong. Trying again...')
+      setTimeout(() => finishOnboarding(), 2000)
     }
   }
 
   return (
-    <div
-      className="onboarding"
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-    >
-      <div
-        className="onboarding-track"
-        style={{ transform: `translateX(-${currentSlide * 100}vw)` }}
-      >
-        {slides.map((slide) => (
-          <div key={slide.key} className="onboarding-slide">
-            {slide.render(slide.key === 'start' ? handleComplete : undefined)}
-          </div>
-        ))}
-      </div>
-      <div className="onboarding-dots">
-        {slides.map((slide, i) => (
-          <span
-            key={slide.key}
-            className={`onboarding-dot${i === currentSlide ? ' active' : ''}`}
-            onClick={() => goTo(i)}
+    <div className="onboarding">
+      {step === 'welcome' && (
+        <div className="onboarding-slide">
+          <span className="onboarding-emoji">{'\uD83D\uDCAA'}</span>
+          <h1>SpotMe</h1>
+          <h2>Your AI Training Partner</h2>
+          <p>An AI coach that learns how you train, adapts to your recovery, and gets smarter every session.</p>
+          <input
+            className="onboarding-name-input"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Your name"
+            autoFocus
+            onKeyDown={e => e.key === 'Enter' && name.trim() && setStep('profile')}
           />
-        ))}
-      </div>
+          <button
+            className="onboarding-cta"
+            disabled={!name.trim()}
+            onClick={() => setStep('profile')}
+          >
+            Get Started
+          </button>
+        </div>
+      )}
+
+      {step === 'profile' && (
+        <div className="onboarding-slide">
+          <h2>Quick setup</h2>
+          <p>Tell Claude about yourself so it can build your program.</p>
+
+          <div className="onboarding-section">
+            <label>Experience</label>
+            <div className="intake-options">
+              {experienceOptions.map(opt => (
+                <button
+                  key={opt}
+                  className={`intake-option${experience === opt.toLowerCase() ? ' selected' : ''}`}
+                  onClick={() => setExperience(opt.toLowerCase())}
+                >{opt}</button>
+              ))}
+            </div>
+          </div>
+
+          <div className="onboarding-section">
+            <label>Goal</label>
+            <div className="intake-options">
+              {goalOptions.map(opt => (
+                <button
+                  key={opt}
+                  className={`intake-option${goals === opt.toLowerCase() ? ' selected' : ''}`}
+                  onClick={() => setGoals(opt.toLowerCase())}
+                >{opt}</button>
+              ))}
+            </div>
+          </div>
+
+          <div className="onboarding-section">
+            <label>Training days</label>
+            <div className="intake-options">
+              {freqOptions.map(opt => (
+                <button
+                  key={opt}
+                  className={`intake-option${frequency === opt ? ' selected' : ''}`}
+                  onClick={() => setFrequency(opt)}
+                >{opt}</button>
+              ))}
+            </div>
+          </div>
+
+          {!showEquipment ? (
+            <button className="onboarding-link" onClick={() => setShowEquipment(true)}>
+              + Add equipment details
+            </button>
+          ) : (
+            <div className="onboarding-section">
+              <label>Equipment</label>
+              <textarea
+                className="intake-textarea"
+                value={equipment}
+                onChange={e => setEquipment(e.target.value)}
+                placeholder="e.g., Full gym, dumbbells only, home setup..."
+                rows={2}
+              />
+            </div>
+          )}
+
+          <button
+            className="onboarding-cta"
+            disabled={!canSubmitProfile}
+            onClick={() => setStep('whoop')}
+          >
+            Next
+          </button>
+        </div>
+      )}
+
+      {step === 'whoop' && (
+        <div className="onboarding-slide">
+          <h2>Connect Whoop</h2>
+          <p>Optional — lets Claude read your recovery and auto-sync workouts.</p>
+
+          {whoopStatus === 'connected' ? (
+            <div className="onboarding-whoop-connected">
+              <span className="onboarding-check">{'\u2713'}</span>
+              <p>Whoop connected! Claude can now see your recovery data.</p>
+              <button className="onboarding-cta" onClick={finishOnboarding}>
+                Build My Program
+              </button>
+            </div>
+          ) : (
+            <>
+              <input
+                className="onboarding-name-input"
+                type="email"
+                value={whoopEmail}
+                onChange={e => setWhoopEmail(e.target.value)}
+                placeholder="Whoop email"
+              />
+              <input
+                className="onboarding-name-input"
+                type="password"
+                value={whoopPassword}
+                onChange={e => setWhoopPassword(e.target.value)}
+                placeholder="Whoop password"
+                onKeyDown={e => e.key === 'Enter' && whoopEmail && whoopPassword && connectWhoop()}
+              />
+              {whoopError && <p className="onboarding-error">{whoopError}</p>}
+              <button
+                className="onboarding-cta"
+                disabled={whoopStatus === 'connecting' || (!whoopEmail || !whoopPassword)}
+                onClick={connectWhoop}
+              >
+                {whoopStatus === 'connecting' ? 'Connecting...' : 'Connect'}
+              </button>
+              <button className="onboarding-skip" onClick={finishOnboarding}>
+                Skip — I don't have a Whoop
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {step === 'generating' && (
+        <div className="onboarding-slide">
+          <div className="onboarding-spinner" />
+          <h2>Setting up your coach</h2>
+          <p>{generatingStatus}</p>
+        </div>
+      )}
     </div>
   )
 }

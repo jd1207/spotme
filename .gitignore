@@ -8,3 +8,5 @@ node_modules/
 dist/
 .pytest_cache/
 .superpowers/
+*.db-shm
+*.db-wal
