@@ -9,6 +9,7 @@ export function ContextBanner({ date }: ContextBannerProps) {
   const [recovery, setRecovery] = useState<{ score: number; zone: string } | null>(null)
   const [workoutType, setWorkoutType] = useState<string | null>(null)
   const [nutrition, setNutrition] = useState<{ current: number; target: number | null } | null>(null)
+  const [whoopStale, setWhoopStale] = useState(false)
 
   useEffect(() => {
     api.getChatDays().then(r => {
@@ -24,6 +25,14 @@ export function ContextBanner({ date }: ContextBannerProps) {
         setNutrition(prev => prev ? { ...prev, target: p.calorie_target } : null)
       }
     }).catch(() => {})
+
+    api.whoopLatest().then(r => {
+      if (r.data && r.data.date !== new Date().toISOString().slice(0, 10)) {
+        setWhoopStale(true)
+      } else {
+        setWhoopStale(false)
+      }
+    }).catch(() => {})
   }, [date])
 
   const hasData = recovery || workoutType || (nutrition && nutrition.current > 0)
@@ -36,7 +45,10 @@ export function ContextBanner({ date }: ContextBannerProps) {
       {recovery && (
         <div className="context-row">
           <span className="context-dot" style={{ background: zoneColor }} />
-          <span className="context-text">{recovery.zone} {recovery.score}% Recovery</span>
+          <span className="context-text">
+            {recovery.zone} {recovery.score}% Recovery
+            {whoopStale && ' (yesterday)'}
+          </span>
         </div>
       )}
       {workoutType && <span className="context-workout">{workoutType}</span>}
