@@ -150,7 +150,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             "fat": round(meal_row.fat or 0, 1),
         }
 
-    context = assemble_context(None, None, whoop_dict, history_dicts, profile_dict, memory_text, workout_context, set_history=set_history, meal_totals=meal_totals)
+    context = assemble_context(None, None, whoop_dict, history_dicts, profile_dict, memory_text, workout_context, set_history=set_history, meal_totals=meal_totals, db=db)
     today = today_eastern()
     if request_date != today:
         context += f"\n\nNote: athlete is reviewing {request_date} on {today}."

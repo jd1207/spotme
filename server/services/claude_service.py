@@ -58,6 +58,32 @@ When Whoop data is available, adjust your coaching:
 
 Always mention the recovery zone when starting a workout. Factor sleep score into recommendations — below 60% sleep suggests shorter session.
 
+## Personalized Coaching Rules
+
+Verbosity scales with deviation: GREEN + normal HRV + good sleep = don't mention Whoop, just coach. YELLOW with minor flags = brief mention. RED or significant deviations = full recommendation.
+
+Signal priority when conflicting: sleep hours > HRV trend > daily recovery score > current strain.
+
+### User-Specific Thresholds
+- Yellow (50-65%) IS BASELINE for this athlete. Full training on yellow days. Only flag recovery below 40% or consecutive reds.
+- Sleep: athlete typically gets 6-7 hours. Don't flag under 7h. Flag: under 5.5h, sleep debt increasing 3+ consecutive days, or short sleep before heavy bench.
+- RED = protect bench, sacrifice legs. Never skip bench on RED. Reduce volume but keep top-end intensity.
+- Heavy bench gating: GREEN = proceed. HIGH YELLOW (55-66%) = proceed, monitor warmup RPE. LOW YELLOW (40-54%) = open with warmups, user decides. RED = recommend reschedule 1 day, cap at 90% if user insists.
+- 315 test day: only on GREEN/high-yellow (55%+), HRV within 15% of 7-day avg, 7+ hours prior sleep.
+- Sauna strain excluded: if strain is high and sauna was logged, subtract sauna strain (~3-5 pts) before adjusting training.
+- Caffeine before 4 PM is normal. Only flag after 4 PM, especially before heavy bench.
+- RPE calibration: same weight feels 0.5-1 RPE harder on yellow vs green. Normal, not regression. Flag only if RPE jumps AND recovery is similar.
+- Lower back: if user reports tightness on rows/deadlifts, don't increase weight, suggest bracing cues.
+- These thresholds calibrate over time. Use RPE feedback as ground truth.
+
+### Tool Behavior
+- Low-risk tools (log activity, update weight): execute then announce. Don't ask permission.
+- Destructive tools (delete activity): confirm with user first.
+- On tool error: say "Whoop disconnected" or "couldn't reach Whoop". Never show technical details.
+
+### User Override
+Always respect user override without nagging. Acknowledge once, then coach at their selected intensity.
+
 ## Meal Tracking
 
 When the user describes a meal or food they ate, estimate the macros and include a "meal" field in your response:
@@ -139,7 +165,7 @@ WHOOP_TOOLS = [
 ]
 
 
-def assemble_context(program, workout, whoop, history, profile=None, memory=None, active_workout=None, set_history=None, meal_totals=None):
+def assemble_context(program, workout, whoop, history, profile=None, memory=None, active_workout=None, set_history=None, meal_totals=None, db=None):
     parts = []
     if profile:
         profile_parts = [f"User: {profile.get('name', 'unknown')}"]
@@ -177,6 +203,33 @@ def assemble_context(program, workout, whoop, history, profile=None, memory=None
         sleep_hrs = f" ({sleep_dur:.1f}h)" if isinstance(sleep_dur, (int, float)) else ""
         sleep_str = f" | Sleep {whoop.get('sleep_score', 'N/A')}%{sleep_hrs}" if whoop.get('sleep_score') else ""
         parts.append(f"Whoop [{zone}]: Recovery {recovery or 'N/A'}% | HRV {whoop.get('hrv', 'N/A')}{sleep_str}{strain_str} | RHR {whoop.get('resting_hr', 'N/A')}")
+
+    # 7-day hrv trend
+    if whoop and whoop.get("hrv") and db:
+        from sqlalchemy import func as sqlfunc
+        from server.models import WhoopData
+        hrv_avg = db.query(sqlfunc.avg(WhoopData.hrv)).filter(
+            WhoopData.hrv.isnot(None)
+        ).scalar()
+        if hrv_avg:
+            today_hrv = whoop["hrv"]
+            hrv_delta = ((today_hrv - hrv_avg) / hrv_avg) * 100
+            parts.append(f"HRV trend: today {today_hrv}ms vs 7-day avg {hrv_avg:.0f}ms ({hrv_delta:+.0f}%)")
+
+    # stale data flag
+    if whoop and db:
+        from server.config import today_eastern
+        whoop_date = whoop.get("date")
+        if whoop_date and whoop_date != today_eastern():
+            parts.append("Note: Whoop data is from yesterday, may not reflect current readiness")
+
+    # tool/catalog availability
+    if db:
+        from server.models import WhoopToken, ExerciseCatalog
+        if db.query(WhoopToken).first():
+            parts.append("Whoop tools available: you can log activities, update weight, set alarm")
+        if db.query(ExerciseCatalog).first():
+            parts.append("Exercise catalog loaded: use search_exercise_catalog to map exercises to Whoop IDs")
 
     if set_history:
         parts.append("Recent sets (last 3 workouts):")
