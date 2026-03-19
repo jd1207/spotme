@@ -4,6 +4,10 @@ AI-powered workout tracker with Whoop integration. Claude is your coach.
 
 Self-hosted PWA — runs on any machine, open on your phone at the gym.
 
+<p align="center">
+  <img src="assets/demo.gif" alt="SpotMe demo" width="195" />
+</p>
+
 ## What it does
 
 - AI coaching that learns your program, adapts to recovery, and remembers your history
