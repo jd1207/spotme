@@ -238,6 +238,23 @@ def assemble_context(program, workout, whoop, history, profile=None, memory=None
         if db.query(ExerciseCatalog).first():
             parts.append("Exercise catalog loaded: use search_exercise_catalog to map exercises to Whoop IDs")
 
+    # one-time education messages
+    if db:
+        from server.models import SystemMemory
+        if db.query(WhoopToken).first():
+            if not db.query(SystemMemory).filter_by(key="whoop_first_workout_shown").first():
+                parts.append(
+                    "ONBOARDING: This is the user's first workout with Whoop connected. "
+                    "Acknowledge briefly that you can see their recovery data and will "
+                    "factor it into training. Keep it short. Don't repeat this."
+                )
+            if not db.query(SystemMemory).filter_by(key="whoop_journal_education_shown").first():
+                parts.append(
+                    "ONBOARDING: On the user's first meal log with Whoop connected, briefly mention "
+                    "you're tracking caffeine and alcohol to their Whoop journal. Say you won't "
+                    "mention it again unless something looks off."
+                )
+
     if set_history:
         parts.append("Recent sets (last 3 workouts):")
         for entry in set_history[:15]:

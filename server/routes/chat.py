@@ -222,6 +222,18 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     db.add(Conversation(role="assistant", content=result["response"], context_type="chat", workout_id=request.workout_id, date=request_date))
     db.commit()
 
+    # mark onboarding flags after successful response
+    from server.models import WhoopToken
+    if db.query(WhoopToken).first():
+        # mark first workout shown if this was a workout context
+        if workout_context and not db.query(SystemMemory).filter_by(key="whoop_first_workout_shown").first():
+            db.add(SystemMemory(key="whoop_first_workout_shown", content="true"))
+            db.commit()
+        # mark journal education shown if a meal was logged
+        if meal_data and not db.query(SystemMemory).filter_by(key="whoop_journal_education_shown").first():
+            db.add(SystemMemory(key="whoop_journal_education_shown", content="true"))
+            db.commit()
+
     # sync journal to whoop if a meal was logged
     if meal_data and isinstance(meal_data, dict):
         from server.models import WhoopToken
