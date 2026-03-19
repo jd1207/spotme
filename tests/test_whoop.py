@@ -423,6 +423,47 @@ async def test_sync_skips_when_fresh(db):
     assert result["skipped"] is True
 
 
+@pytest.mark.asyncio
+async def test_populate_exercise_catalog(db):
+    """Fetching exercise catalog populates ExerciseCatalog table."""
+    from server.models import ExerciseCatalog, WhoopToken
+    from datetime import datetime, timedelta
+
+    # need a token for get_whoop_client
+    db.add(WhoopToken(
+        access_token="test", refresh_token="test",
+        expires_at=datetime.utcnow() + timedelta(hours=1),
+    ))
+    db.commit()
+
+    ex1 = MagicMock()
+    ex1.id = "BENCHPRESS_BARBELL"
+    ex1.name = "Bench Press"
+    ex1.equipment = "BARBELL"
+    ex1.muscle_group = "CHEST"
+
+    ex2 = MagicMock()
+    ex2.id = "SQUAT_BARBELL"
+    ex2.name = "Squat"
+    ex2.equipment = "BARBELL"
+    ex2.muscle_group = "LEGS"
+
+    mock_catalog = MagicMock()
+    mock_catalog.exercises = [ex1, ex2]
+
+    with patch("server.services.whoop_service.get_whoop_client") as mock_factory:
+        mock_client = AsyncMock()
+        mock_factory.return_value = mock_client
+        mock_client.get_exercises = AsyncMock(return_value=mock_catalog)
+
+        from server.services.whoop_service import populate_exercise_catalog
+        await populate_exercise_catalog(db)
+
+    assert db.query(ExerciseCatalog).count() == 2
+    bench = db.query(ExerciseCatalog).filter_by(whoop_id="BENCHPRESS_BARBELL").first()
+    assert bench.name == "Bench Press"
+
+
 def test_v04_schema_columns(db):
     """verify v0.4 columns exist on models"""
     ex = Exercise(name="test", whoop_exercise_id="BENCHPRESS_BARBELL", order=1)

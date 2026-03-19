@@ -230,6 +230,24 @@ async def process_whoop_queue(db: Session):
     return {"processed": processed, "remaining": len(pending) - processed}
 
 
+async def populate_exercise_catalog(db):
+    """fetch full exercise catalog from whoop and cache locally."""
+    from server.models import ExerciseCatalog
+
+    client = get_whoop_client(db)
+    catalog = await client.get_exercises()
+
+    # clear existing and repopulate
+    db.query(ExerciseCatalog).delete()
+    for ex in catalog.exercises:
+        db.add(ExerciseCatalog(
+            whoop_id=ex.id, name=ex.name,
+            equipment=getattr(ex, 'equipment', None),
+            muscle_group=getattr(ex, 'muscle_group', None),
+        ))
+    db.commit()
+
+
 def _queue_failed_sync(db: Session, workout_id: int, date: str, error: Exception):
     db.add(WhoopSyncQueue(
         workout_id=workout_id,

@@ -53,6 +53,12 @@ async def whoop_login(data: dict, db: Session = Depends(get_db)):
             expires_at=datetime.fromtimestamp(tokens.expires_at),
         ))
     db.commit()
+    # populate exercise catalog (best-effort)
+    try:
+        from server.services.whoop_service import populate_exercise_catalog
+        await populate_exercise_catalog(db)
+    except Exception:
+        pass  # catalog fetch is best-effort, login still succeeds
     return {"connected": True}
 
 
