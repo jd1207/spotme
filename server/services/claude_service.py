@@ -1,13 +1,12 @@
 from __future__ import annotations
-import asyncio
 import json
 import logging
-import shutil
+import anthropic
 from server.services.layout_service import validate_layout
 
 logger = logging.getLogger(__name__)
 
-CLAUDE_BIN = shutil.which("claude") or "/home/deck/.local/bin/claude"
+MODEL = "claude-sonnet-4-20250514"
 
 SYSTEM_PROMPT = """You are SpotMe, an AI strength coach running inside a workout tracking app. You help the user train, log sets, adjust programming, and provide coaching based on their data.
 
@@ -134,8 +133,6 @@ def assemble_context(program, workout, whoop, history, profile=None, memory=None
 
 
 class ClaudeService:
-    def __init__(self, api_key: str = ""):
-        self.api_key = api_key
 
     async def chat(self, message: str, context: str) -> dict:
         system = f"{SYSTEM_PROMPT}\n\nCurrent context:\n{context}"
@@ -186,23 +183,13 @@ def _extract_json(text: str) -> str:
     return stripped
 
 
-async def _call_claude(system: str, message: str) -> str:
-    proc = await asyncio.create_subprocess_exec(
-        CLAUDE_BIN, "--print",
-        "--append-system-prompt", system,
-        "-p", message,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+async def _call_claude(system_prompt: str, message: str) -> str:
+    client = anthropic.AsyncAnthropic()
+    response = await client.messages.create(
+        model=MODEL,
+        max_tokens=4096,
+        system=system_prompt,
+        messages=[{"role": "user", "content": message}],
     )
-    try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
-        raise RuntimeError("claude cli timed out after 120s")
-    if proc.returncode != 0:
-        error = stderr.decode().strip()
-        logger.error("claude cli error: %s", error)
-        raise RuntimeError(f"claude cli failed: {error}")
-    raw = stdout.decode().strip()
-    return _extract_json(raw)
+    raw = response.content[0].text
+    return _extract_json(raw.strip())
