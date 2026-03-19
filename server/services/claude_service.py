@@ -75,6 +75,69 @@ Be specific about your estimates. If the user just says "I had chicken and rice"
 RECOVERY_GREEN = 67
 RECOVERY_YELLOW = 34
 
+WHOOP_TOOLS = [
+    {
+        "name": "create_whoop_activity",
+        "description": "Log an activity to the user's Whoop. Use for sauna, ice bath, meditation, yoga, stretching, running, cycling, hiking, swimming, walking.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "activity_type": {"type": "string", "enum": ["sauna", "ice_bath", "meditation", "yoga", "stretching", "running", "cycling", "hiking", "swimming", "walking"]},
+                "duration_minutes": {"type": "integer"},
+                "start_time": {"type": "string", "description": "ISO 8601 timestamp, optional"},
+            },
+            "required": ["activity_type", "duration_minutes"],
+        },
+    },
+    {
+        "name": "update_whoop_weight",
+        "description": "Update body weight on Whoop.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"weight_lbs": {"type": "number"}},
+            "required": ["weight_lbs"],
+        },
+    },
+    {
+        "name": "set_whoop_alarm",
+        "description": "Set or disable Whoop alarm.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "time": {"type": "string", "description": "HH:MM format"},
+                "enabled": {"type": "boolean"},
+            },
+            "required": ["time"],
+        },
+    },
+    {
+        "name": "delete_whoop_activity",
+        "description": "Delete an activity from Whoop. Confirm with user before calling.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"activity_id": {"type": "string"}},
+            "required": ["activity_id"],
+        },
+    },
+    {
+        "name": "list_whoop_activities",
+        "description": "List recent Whoop activities to find an activity ID for deletion or reference.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"limit": {"type": "integer", "default": 5}},
+        },
+    },
+    {
+        "name": "search_exercise_catalog",
+        "description": "Search Whoop exercise catalog by name, equipment, or muscle group.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+        },
+    },
+]
+
 
 def assemble_context(program, workout, whoop, history, profile=None, memory=None, active_workout=None, set_history=None, meal_totals=None):
     parts = []
@@ -134,10 +197,23 @@ def assemble_context(program, workout, whoop, history, profile=None, memory=None
 
 class ClaudeService:
 
-    async def chat(self, message: str, context: str) -> dict:
+    async def chat(self, message: str, context: str, db=None) -> dict:
         system = f"{SYSTEM_PROMPT}\n\nCurrent context:\n{context}"
         try:
-            raw_text = await _call_claude(system, message)
+            from server.models import WhoopToken
+            whoop_connected = db.query(WhoopToken).first() is not None if db else False
+
+            if whoop_connected:
+                from server.services.whoop_tools import execute_whoop_tool
+                raw_text = await _call_claude_with_tools(
+                    system_prompt=system,
+                    message=message,
+                    tools=WHOOP_TOOLS,
+                    tool_executor=execute_whoop_tool,
+                    db=db,
+                )
+            else:
+                raw_text = await _call_claude(system, message)
         except Exception as e:
             logger.error("claude call failed: %s", e)
             return {"response": "Having trouble reaching Claude right now. Try again in a sec.", "layout": None, "profile": None, "memory_update": None, "set_suggestion": None, "meal": None, "workout_plan": None}

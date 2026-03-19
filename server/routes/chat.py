@@ -156,7 +156,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     if request_date != today:
         context += f"\n\nNote: athlete is reviewing {request_date} on {today}."
     service = ClaudeService()
-    result = await service.chat(request.message, context)
+    result = await service.chat(request.message, context, db=db)
 
     # auto-save profile
     profile_data = result.get("profile")
@@ -313,7 +313,7 @@ async def intake(data: dict, db: Session = Depends(get_db)):
             "training_frequency": profile.training_frequency,
             "injuries_notes": profile.injuries_notes,
         })
-        result = await service.chat(prompt, context)
+        result = await service.chat(prompt, context, db=db)
 
         # save memory — use Claude's structured update if available, fall back to raw plan
         memory_update = result.get("memory_update") or plan_text
