@@ -16,9 +16,12 @@ You have access to persistent TRAINING MEMORY (shown in context). This is your l
 
 ## Rules
 
-1. If the user shares a training plan, program, or detailed athlete info, STORE IT by including a "memory_update" field in your response. This replaces the current training memory entirely, so include everything important — don't just add new info, merge it with what you already know.
+1. TRAINING PROGRAM (shown in context) is READ-ONLY reference. Do NOT include "memory_update" to mark workouts complete or log performance. Only use "memory_update" when the user explicitly asks to change, replace, or create a new program.
 
-2. If the user logs a set or completes a workout, update memory to reflect progress (mark sessions done, note performance, adjust projections if needed).
+2. When the user completes a workout, logs performance, or you need to record progress, include a "training_log_entry" field instead:
+   {"type": "completion", "day": "Heavy Bench", "summary": "265x4, 255x3x3 backoffs, 75 min"}
+   {"type": "note", "text": "275 moved fast on green recovery, ready to push 285 next week"}
+   {"type": "adjustment", "change": "moved heavy bench from Sunday to Monday this week", "reason": "scheduling conflict"}
 
 3. If there's no user profile yet, welcome them and ask about their training background, goals, and equipment. When they share info, include a "profile" field.
 
@@ -35,7 +38,8 @@ Always respond with valid JSON:
   "layout": null,
   "set_suggestion": null,
   "profile": {"name": "...", ...},
-  "memory_update": "full updated training memory as markdown"
+  "memory_update": null,
+  "training_log_entry": null
 }
 ```
 - "response" is required
@@ -43,7 +47,8 @@ Always respond with valid JSON:
 - "set_suggestion" is optional — ONLY include when the user is actively in a workout (workout context shows an active workout). Do NOT suggest specific sets during casual pre-workout chat:
   {"exercise": "Bench Press", "weight": 225, "reps": 5, "basis": "based on last session + green recovery"}
 - "profile" is optional (only when you learn new profile info). Supported fields: name, goals, experience_level, equipment, training_frequency, injuries_notes, calorie_target (int), protein_target (int). When the user mentions daily nutrition targets, set calorie_target and protein_target.
-- "memory_update" is optional (only when training memory should change)
+- "memory_update" is optional — ONLY when the user creates or replaces their entire program. NOT for workout completions.
+- "training_log_entry" is optional — use for workout completions, performance notes, and schedule adjustments. Types: "completion", "note", "adjustment".
 - "meal" is optional (only when the user describes food they ate)
 - "workout_plan" is optional — when the user starts a workout or says "starting my workout", generate the full warm-up and working set sequence from training memory. Format:
   [{"exercise": "Bench Press", "set_type": "warmup", "weight": 135, "reps": 10}, {"exercise": "Bench Press", "set_type": "working", "weight": 235, "reps": 6}, ...]
@@ -295,11 +300,11 @@ class ClaudeService:
                 raw_text = await _call_claude(system, message)
         except Exception as e:
             logger.error("claude call failed: %s", e)
-            return {"response": "Having trouble reaching Claude right now. Try again in a sec.", "layout": None, "profile": None, "memory_update": None, "set_suggestion": None, "meal": None, "workout_plan": None}
+            return {"response": "Having trouble reaching Claude right now. Try again in a sec.", "layout": None, "profile": None, "memory_update": None, "training_log_entry": None, "set_suggestion": None, "meal": None, "workout_plan": None}
         try:
             parsed = json.loads(raw_text)
         except json.JSONDecodeError:
-            return {"response": raw_text, "layout": None, "profile": None, "memory_update": None, "set_suggestion": None, "meal": None, "workout_plan": None}
+            return {"response": raw_text, "layout": None, "profile": None, "memory_update": None, "training_log_entry": None, "set_suggestion": None, "meal": None, "workout_plan": None}
         layout = parsed.get("layout")
         if layout:
             validation = validate_layout(layout)
@@ -309,6 +314,7 @@ class ClaudeService:
             "layout": layout,
             "profile": parsed.get("profile"),
             "memory_update": parsed.get("memory_update"),
+            "training_log_entry": parsed.get("training_log_entry"),
             "set_suggestion": parsed.get("set_suggestion"),
             "meal": parsed.get("meal"),
             "workout_plan": parsed.get("workout_plan"),
