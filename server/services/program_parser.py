@@ -37,16 +37,18 @@ def _parse_schedule(content: str) -> dict:
     schedule = {}
     for line in section.split('\n'):
         line = line.strip().lstrip('- ')
+        # strip markdown bold/emphasis markers
+        line = line.replace('**', '').replace('*', '')
         if not line:
             continue
         day_pattern = '|'.join(ABBREV_MAP.keys())
         match = re.match(
-            rf'({day_pattern})[:\s]+(.+?)(?:\s*\(.*\))?$',
+            rf'({day_pattern})[:\s]+(.+?)(?:\s*[—\-\(].*)?$',
             line, re.IGNORECASE,
         )
         if match:
             day_name = match.group(1).strip()
-            workout_type = match.group(2).strip()
+            workout_type = match.group(2).strip().rstrip(' —-')
             abbrev = ABBREV_MAP.get(day_name, day_name[:3])
             schedule[abbrev] = workout_type
     return schedule

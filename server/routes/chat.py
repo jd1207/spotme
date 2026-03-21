@@ -150,7 +150,20 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             "fat": round(meal_row.fat or 0, 1),
         }
 
-    context = assemble_context(None, None, whoop_dict, history_dicts, profile_dict, memory_text, workout_context, set_history=set_history, meal_totals=meal_totals, db=db)
+    # recent training log entries for context
+    from server.models import TrainingLog
+    recent_logs = (
+        db.query(TrainingLog)
+        .order_by(TrainingLog.id.desc())
+        .limit(15)
+        .all()
+    )
+    training_log_dicts = [
+        {"date": log.date, "type": log.log_type, "content": log.content}
+        for log in reversed(recent_logs)
+    ]
+
+    context = assemble_context(None, None, whoop_dict, history_dicts, profile_dict, memory_text, workout_context, set_history=set_history, meal_totals=meal_totals, db=db, training_log=training_log_dicts)
     today = today_eastern()
     if request_date != today:
         context += f"\n\nNote: athlete is reviewing {request_date} on {today}."
@@ -177,9 +190,12 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             )
             db.add(profile)
 
-    # auto-save memory
+    # extract log entry early so the memory guard can reference it
+    log_entry = result.get("training_log_entry")
+
+    # save memory — block if a log entry is present (prevents accidental program truncation)
     memory_update = result.get("memory_update")
-    if memory_update and isinstance(memory_update, str):
+    if memory_update and isinstance(memory_update, str) and not log_entry:
         if memory_row:
             memory_row.content = memory_update
         else:
@@ -216,6 +232,17 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         active_workout_id = plan_result["workout_id"]
         current_set = plan_result["first_set"]
         workout_active = True
+
+    # save training log entry (append-only)
+    if log_entry and isinstance(log_entry, dict):
+        from server.models import TrainingLog
+        log_type = log_entry.get("type", "note")
+        content = json_lib.dumps(log_entry) if not isinstance(log_entry, str) else log_entry
+        db.add(TrainingLog(
+            date=request_date,
+            log_type=log_type,
+            content=content,
+        ))
 
     # save messages
     db.add(Conversation(role="user", content=request.message, context_type="chat", workout_id=request.workout_id, date=request_date))
