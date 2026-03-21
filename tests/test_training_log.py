@@ -37,6 +37,25 @@ def test_app(engine):
     return TestClient(app)
 
 
+def test_context_includes_training_log():
+    """assemble_context includes recent training log entries."""
+    from server.services.claude_service import assemble_context
+
+    context = assemble_context(
+        None, None, None, [],
+        memory="## Week 1\n- Heavy Bench: 255x3",
+        training_log=[
+            {"date": "2026-03-21", "type": "completion", "content": "Pull / Back: 75 min"},
+            {"date": "2026-03-21", "type": "note", "content": "265x4 felt easy"},
+        ],
+    )
+
+    assert "TRAINING LOG" in context
+    assert "Pull / Back" in context
+    assert "265x4 felt easy" in context
+    assert "TRAINING MEMORY" in context or "Week 1" in context
+
+
 def test_training_log_model(db):
     """TrainingLog model stores structured workout events."""
     from server.models import TrainingLog

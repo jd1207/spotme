@@ -179,7 +179,7 @@ WHOOP_TOOLS = [
 ]
 
 
-def assemble_context(program, workout, whoop, history, profile=None, memory=None, active_workout=None, set_history=None, meal_totals=None, db=None):
+def assemble_context(program, workout, whoop, history, profile=None, memory=None, active_workout=None, set_history=None, meal_totals=None, db=None, training_log=None):
     parts = []
     if profile:
         profile_parts = [f"User: {profile.get('name', 'unknown')}"]
@@ -205,6 +205,15 @@ def assemble_context(program, workout, whoop, history, profile=None, memory=None
         parts.append(f"\n--- TRAINING MEMORY ---\n{memory}\n--- END TRAINING MEMORY ---")
     else:
         parts.append("\nNo training memory yet. If the user shares a program or plan, store it via memory_update.")
+
+    if training_log:
+        parts.append("\n--- TRAINING LOG (recent) ---")
+        for entry in training_log[-15:]:  # last 15 entries
+            date = entry.get("date", "")
+            etype = entry.get("type", "")
+            content = entry.get("content", "")
+            parts.append(f"  [{date}] {etype}: {content}")
+        parts.append("--- END TRAINING LOG ---")
 
     if active_workout:
         parts.append(f"\n{active_workout}")
