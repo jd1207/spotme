@@ -190,9 +190,12 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             )
             db.add(profile)
 
-    # auto-save memory
+    # extract log entry early so the memory guard can reference it
+    log_entry = result.get("training_log_entry")
+
+    # save memory — block if a log entry is present (prevents accidental program truncation)
     memory_update = result.get("memory_update")
-    if memory_update and isinstance(memory_update, str):
+    if memory_update and isinstance(memory_update, str) and not log_entry:
         if memory_row:
             memory_row.content = memory_update
         else:
@@ -231,7 +234,6 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         workout_active = True
 
     # save training log entry (append-only)
-    log_entry = result.get("training_log_entry")
     if log_entry and isinstance(log_entry, dict):
         from server.models import TrainingLog
         log_type = log_entry.get("type", "note")

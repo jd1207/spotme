@@ -110,3 +110,32 @@ def test_chat_saves_training_log_entry(test_app, engine):
     assert log.log_type == "completion"
     assert "Pull / Back" in log.content
     session.close()
+
+
+def test_memory_update_blocked_when_log_entry_present(test_app, engine):
+    """memory_update is ignored when training_log_entry is also present."""
+    from server.models import SystemMemory
+
+    TestSession = sessionmaker(bind=engine)
+    session = TestSession()
+    session.add(SystemMemory(key="training_plan", content="Original detailed program with 5 weeks of exercises"))
+    session.commit()
+    session.close()
+
+    with patch("server.routes.chat.ClaudeService") as MockService:
+        mock_instance = MagicMock()
+        MockService.return_value = mock_instance
+        mock_instance.chat = AsyncMock(return_value={
+            "response": "Workout logged!",
+            "layout": None, "profile": None,
+            "memory_update": "Shortened program",
+            "set_suggestion": None, "meal": None, "workout_plan": None,
+            "training_log_entry": {"type": "completion", "day": "Bench", "summary": "done"},
+        })
+        resp = test_app.post("/api/chat", json={"message": "finished bench"})
+
+    assert resp.status_code == 200
+    session = TestSession()
+    mem = session.query(SystemMemory).filter_by(key="training_plan").first()
+    assert mem.content == "Original detailed program with 5 weeks of exercises"
+    session.close()
