@@ -150,3 +150,12 @@ class ExerciseCatalog(Base):
     equipment = Column(String, nullable=True)
     muscle_group = Column(String, nullable=True)
     cached_at = Column(DateTime, default=datetime.utcnow)
+
+
+class TrainingLog(Base):
+    __tablename__ = "training_log"
+    id = Column(Integer, primary_key=True)
+    date = Column(String, nullable=False)
+    log_type = Column(String, nullable=False)  # completion, note, adjustment
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
