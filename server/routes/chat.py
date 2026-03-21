@@ -217,6 +217,18 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         current_set = plan_result["first_set"]
         workout_active = True
 
+    # save training log entry (append-only)
+    log_entry = result.get("training_log_entry")
+    if log_entry and isinstance(log_entry, dict):
+        from server.models import TrainingLog
+        log_type = log_entry.get("type", "note")
+        content = json_lib.dumps(log_entry) if not isinstance(log_entry, str) else log_entry
+        db.add(TrainingLog(
+            date=request_date,
+            log_type=log_type,
+            content=content,
+        ))
+
     # save messages
     db.add(Conversation(role="user", content=request.message, context_type="chat", workout_id=request.workout_id, date=request_date))
     db.add(Conversation(role="assistant", content=result["response"], context_type="chat", workout_id=request.workout_id, date=request_date))

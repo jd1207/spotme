@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import AsyncMock, patch, MagicMock
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -20,6 +21,22 @@ def db(engine):
     session.close()
 
 
+@pytest.fixture
+def test_app(engine):
+    from server.main import create_app
+    TestSession = sessionmaker(bind=engine)
+    def override_db():
+        session = TestSession()
+        try:
+            yield session
+        finally:
+            session.close()
+    app = create_app()
+    app.dependency_overrides[get_db] = override_db
+    from fastapi.testclient import TestClient
+    return TestClient(app)
+
+
 def test_training_log_model(db):
     """TrainingLog model stores structured workout events."""
     from server.models import TrainingLog
@@ -38,3 +55,39 @@ def test_training_log_model(db):
     assert len(logs) == 2
     assert logs[0].log_type == "completion"
     assert logs[1].log_type == "note"
+
+
+def test_chat_saves_training_log_entry(test_app, engine):
+    """Chat route saves training_log_entry from Claude response."""
+    from server.models import TrainingLog
+
+    TestSession = sessionmaker(bind=engine)
+
+    with patch("server.routes.chat.ClaudeService") as MockService:
+        mock_instance = MagicMock()
+        MockService.return_value = mock_instance
+        mock_instance.chat = AsyncMock(return_value={
+            "response": "Nice work on pull day!",
+            "layout": None,
+            "profile": None,
+            "memory_update": None,
+            "set_suggestion": None,
+            "meal": None,
+            "workout_plan": None,
+            "training_log_entry": {
+                "type": "completion",
+                "day": "Pull / Back",
+                "summary": "75 min, all exercises completed",
+            },
+        })
+
+        resp = test_app.post("/api/chat", json={"message": "just finished pull day"})
+
+    assert resp.status_code == 200
+
+    session = TestSession()
+    log = session.query(TrainingLog).first()
+    assert log is not None
+    assert log.log_type == "completion"
+    assert "Pull / Back" in log.content
+    session.close()
