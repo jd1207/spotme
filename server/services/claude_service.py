@@ -297,13 +297,108 @@ def assemble_context(program, workout, whoop, history, profile=None, memory=None
 
 class ClaudeService:
 
-    async def chat(self, message: str, context: str, db=None) -> dict:
+    def __init__(self):
+        from server.services.session_manager import SessionManager
+        self.session_mgr = SessionManager()
+
+    async def chat(self, message: str, context: str, db=None, date: str | None = None) -> dict:
+        from server.config import today_eastern
+        today = date or today_eastern()
+
+        # fallback to stateless when no db available (unit tests, intake)
+        if db is None:
+            return await self._chat_stateless(message, context)
+
+        is_first = self.session_mgr.is_first_message(db, today)
+
+        # daily handoff: summarize old session before creating new
+        if self.session_mgr.needs_handoff(db, today):
+            await self._do_handoff(db, today)
+
+        session_id = self.session_mgr.get_or_create_session_id(db, today)
+
+        try:
+            if is_first:
+                # first message: system prompt in --append-system-prompt, context + user msg in -p
+                raw_text = await _call_claude_session(
+                    session_id=session_id,
+                    message=f"Current context:\n{context}\n\n{message}",
+                    is_first=True,
+                    system_prompt=SYSTEM_PROMPT,
+                )
+            else:
+                raw_text = await _call_claude_session(
+                    session_id=session_id,
+                    message=message,
+                    is_first=False,
+                )
+        except Exception as e:
+            logger.error("claude session call failed: %s", e)
+            # try recovery: invalidate and retry as fresh session
+            self.session_mgr.invalidate_session(db)
+            try:
+                session_id = self.session_mgr.get_or_create_session_id(db, today)
+                raw_text = await _call_claude_session(
+                    session_id=session_id,
+                    message=f"Current context:\n{context}\n\n{message}",
+                    is_first=True,
+                    system_prompt=SYSTEM_PROMPT,
+                )
+            except Exception as e2:
+                logger.error("claude recovery failed: %s", e2)
+                return self._error_response()
+
+        # parse response
+        try:
+            parsed = json.loads(raw_text)
+        except json.JSONDecodeError:
+            return {"response": raw_text, "layout": None, "profile": None, "memory_update": None, "training_log_entry": None, "set_suggestion": None, "meal": None, "workout_plan": None}
+
+        # handle tool calls — 2nd call within the same session
+        tool_calls = parsed.get("tool_calls", [])
+        if tool_calls and db:
+            from server.services.whoop_tools import execute_whoop_tool
+            results = []
+            for tc in tool_calls:
+                result = await execute_whoop_tool(tc["name"], tc.get("arguments", {}), db)
+                results.append({"tool": tc["name"], "result": result})
+            try:
+                followup_text = await _call_claude_session(
+                    session_id=session_id,
+                    message=f"Tool results: {json.dumps(results)}",
+                    is_first=False,
+                )
+                try:
+                    parsed = json.loads(followup_text)
+                except json.JSONDecodeError:
+                    parsed["response"] = followup_text
+            except Exception:
+                pass
+
+        layout = parsed.get("layout")
+        if layout:
+            validation = validate_layout(layout)
+            layout = validation["layout"] if validation["valid"] else None
+
+        return {
+            "response": parsed.get("response", raw_text),
+            "layout": layout,
+            "profile": parsed.get("profile"),
+            "memory_update": parsed.get("memory_update"),
+            "training_log_entry": parsed.get("training_log_entry"),
+            "set_suggestion": parsed.get("set_suggestion"),
+            "meal": parsed.get("meal"),
+            "workout_plan": parsed.get("workout_plan"),
+        }
+
+    async def _chat_stateless(self, message: str, context: str) -> dict:
+        """fallback for calls without a db session (unit tests, intake)"""
         system = f"{SYSTEM_PROMPT}\n\nCurrent context:\n{context}"
         try:
             raw_text = await _call_claude_stateless(system, message)
         except Exception as e:
             logger.error("claude call failed: %s", e)
-            return {"response": "Having trouble reaching Claude right now. Try again in a sec.", "layout": None, "profile": None, "memory_update": None, "training_log_entry": None, "set_suggestion": None, "meal": None, "workout_plan": None}
+            return self._error_response()
         try:
             parsed = json.loads(raw_text)
         except json.JSONDecodeError:
@@ -322,6 +417,41 @@ class ClaudeService:
             "meal": parsed.get("meal"),
             "workout_plan": parsed.get("workout_plan"),
         }
+
+    _handoff_lock = asyncio.Lock()
+
+    async def _do_handoff(self, db, today: str):
+        """summarize old session and create new one"""
+        async with self._handoff_lock:
+            if not self.session_mgr.needs_handoff(db, today):
+                return
+            old_id, old_date = self.session_mgr.get_old_session(db)
+            if not old_id:
+                return
+            try:
+                summary_text = await _call_claude_session(
+                    session_id=old_id,
+                    message="Summarize today's coaching session in 2-3 sentences. Include: what was trained, key performance notes, any program adjustments discussed, and anything to carry forward to tomorrow.",
+                    is_first=False,
+                )
+                try:
+                    summary_parsed = json.loads(summary_text)
+                    summary_content = summary_parsed.get("response", summary_text)
+                except json.JSONDecodeError:
+                    summary_content = summary_text
+                from server.models import TrainingLog
+                db.add(TrainingLog(
+                    date=old_date or today,
+                    log_type="daily_summary",
+                    content=summary_content[:500],
+                ))
+                db.commit()
+            except Exception as e:
+                logger.warning("session handoff summary failed: %s", e)
+            self.session_mgr.invalidate_session(db)
+
+    def _error_response(self):
+        return {"response": "Having trouble reaching Claude right now. Try again in a sec.", "layout": None, "profile": None, "memory_update": None, "training_log_entry": None, "set_suggestion": None, "meal": None, "workout_plan": None}
 
     async def generate_interview_questions(self, profile_summary: str) -> list[str]:
         """generate personalized interview questions for onboarding."""

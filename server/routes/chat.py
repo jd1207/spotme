@@ -1,5 +1,6 @@
 import asyncio
 import json as json_lib
+import logging
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from server.database import get_db
@@ -13,6 +14,8 @@ from server.models import (
 )
 from server.config import today_eastern
 from server.utils import recovery_zone
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -168,7 +171,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     if request_date != today:
         context += f"\n\nNote: athlete is reviewing {request_date} on {today}."
     service = ClaudeService()
-    result = await service.chat(request.message, context, db=db)
+    result = await service.chat(request.message, context, db=db, date=request_date)
 
     # auto-save profile
     profile_data = result.get("profile")
@@ -193,10 +196,13 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     # extract log entry early so the memory guard can reference it
     log_entry = result.get("training_log_entry")
 
-    # save memory — block if a log entry is present (prevents accidental program truncation)
+    # save memory — allow concurrent with training_log_entry, but guard against truncation
     memory_update = result.get("memory_update")
-    if memory_update and isinstance(memory_update, str) and not log_entry:
-        if memory_row:
+    if memory_update and isinstance(memory_update, str):
+        existing_len = len(memory_row.content or "") if memory_row else 0
+        if existing_len > 0 and len(memory_update) < existing_len * 0.5:
+            logger.warning("blocked memory_update: %d chars vs existing %d chars (>50%% reduction)", len(memory_update), existing_len)
+        elif memory_row:
             memory_row.content = memory_update
         else:
             db.add(SystemMemory(key=MEMORY_KEY, content=memory_update))
