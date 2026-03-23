@@ -14,13 +14,24 @@ interface DayData {
 }
 
 interface WeekProps {
-  week: { number: number; title: string; days: DayData[] }
+  week: { number: number; title: string; days: DayData[]; start_date?: string | null }
   today: string
 }
 
-export function ProgramWeek({ week }: WeekProps) {
-  const isCurrentWeek = week.title.toLowerCase().includes('current') ||
-    week.days.some(d => d.status === 'completed')
+function isWeekCurrent(week: WeekProps['week'], today: string): boolean {
+  if (week.title.toLowerCase().includes('current')) return true
+  if (week.start_date) {
+    const start = new Date(week.start_date + 'T00:00:00')
+    const end = new Date(start)
+    end.setDate(end.getDate() + 7)
+    const t = new Date(today + 'T00:00:00')
+    return t >= start && t < end
+  }
+  return false
+}
+
+export function ProgramWeek({ week, today }: WeekProps) {
+  const isCurrentWeek = isWeekCurrent(week, today)
   const [open, setOpen] = useState(isCurrentWeek)
   const [enrichedDays, setEnrichedDays] = useState<DayData[] | null>(null)
 
@@ -31,9 +42,9 @@ export function ProgramWeek({ week }: WeekProps) {
       .catch(() => {})
   }, [open, week.number])
 
-  const completedDays = week.days.filter(d => d.status === 'completed').length
-  const totalDays = week.days.length
   const displayDays = enrichedDays ?? week.days
+  const completedDays = displayDays.filter(d => d.status === 'completed').length
+  const totalDays = week.days.length
 
   return (
     <div className={`program-week${isCurrentWeek ? ' current' : ''}`}>

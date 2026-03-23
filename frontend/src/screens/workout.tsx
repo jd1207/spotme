@@ -42,6 +42,36 @@ export function Workout() {
       .catch(() => setMessages([]))
   }, [chatDate, workoutId])
 
+  // recover server-saved responses after tab switch / screen off
+  const chatDateRef = useRef(chatDate)
+  chatDateRef.current = chatDate
+  const workoutIdRef = useRef(workoutId)
+  workoutIdRef.current = workoutId
+  useEffect(() => {
+    const handler = () => {
+      if (document.hidden) return
+      const wid = workoutIdRef.current
+      if (wid && wid > 0) {
+        api.getChatHistory(wid)
+          .then(r => {
+            const msgs = r.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
+            if (msgs.length > 0) setMessages(msgs)
+          })
+          .catch(() => {})
+      } else {
+        api.getChatDay(chatDateRef.current)
+          .then(r => {
+            const msgs = r.messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
+            if (msgs.length > 0) setMessages(msgs)
+          })
+          .catch(() => {})
+      }
+      setThinking(false)
+    }
+    document.addEventListener('visibilitychange', handler)
+    return () => document.removeEventListener('visibilitychange', handler)
+  }, [])
+
   const endWorkout = async () => {
     if (workoutId && workoutId > 0) {
       try { await api.completeWorkout(workoutId) } catch {}
@@ -90,12 +120,26 @@ export function Workout() {
     setThinking(true)
     try {
       const wid = workoutId && workoutId > 0 ? workoutId : undefined
-      const result = await api.chat(text, wid, wid ? undefined : chatDate)
-      setMessages(m => [...m, { role: 'assistant', content: result.response }])
-      if (result.workout_active && result.current_set) {
-        setWorkoutId(result.workout_id ?? null)
-        setCurrentSet(result.current_set)
-        setSetProgress({ completed: 0, total: 0, current_exercise_progress: '0 of 0' })
+      if (wid) {
+        // active workout: non-streaming (needs workout_id for set sequencing)
+        const result = await api.chat(text, wid, wid ? undefined : chatDate)
+        setMessages(m => [...m, { role: 'assistant', content: result.response }])
+        if (result.workout_active && result.current_set) {
+          setWorkoutId(result.workout_id ?? null)
+          setCurrentSet(result.current_set)
+          setSetProgress({ completed: 0, total: 0, current_exercise_progress: '0 of 0' })
+        }
+      } else {
+        // daily chat: stream tokens
+        setMessages(m => [...m, { role: 'assistant', content: '' }])
+        setThinking(false)
+        await api.chatStream(text, chatDate, (partial) => {
+          setMessages(m => {
+            const updated = [...m]
+            updated[updated.length - 1] = { role: 'assistant', content: partial }
+            return updated
+          })
+        })
       }
     } catch {
       setMessages(m => [...m, { role: 'assistant', content: 'Connection error — try again in a sec.' }])

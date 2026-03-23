@@ -17,7 +17,7 @@ async def analyze_video(file: UploadFile = File(...), exercise: str = "unknown e
     video_path = await video_service.save_upload(await file.read(), filename)
     frames = await video_service.extract_frames(video_path, num_frames=3)
     context = f"{exercise} at {weight}lbs, set {set_number}"
-    claude = ClaudeService(api_key=settings.anthropic_api_key)
+    claude = ClaudeService()
     result = await claude.analyze_form(frames, context)
     form_check = FormCheck(video_path=video_path, frames_extracted=len(frames), claude_analysis=result["analysis"])
     db.add(form_check)

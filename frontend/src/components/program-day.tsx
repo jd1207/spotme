@@ -86,10 +86,29 @@ function LoggedBody({ exercises, summary }: { exercises: ExerciseData[]; summary
   )
 }
 
+function splitExercises(text: string): string[] {
+  // split on commas, but not inside parentheses
+  const parts: string[] = []
+  let depth = 0
+  let current = ''
+  for (const ch of text) {
+    if (ch === '(') depth++
+    else if (ch === ')') depth = Math.max(0, depth - 1)
+    if (ch === ',' && depth === 0) {
+      const trimmed = current.trim()
+      if (trimmed) parts.push(trimmed)
+      current = ''
+    } else {
+      current += ch
+    }
+  }
+  const trimmed = current.trim()
+  if (trimmed) parts.push(trimmed)
+  return parts
+}
+
 function PlannedBody({ day }: { day: DayData }) {
-  const exercises = day.planned
-    ? day.planned.split(',').map(e => e.trim()).filter(Boolean)
-    : []
+  const exercises = day.planned ? splitExercises(day.planned) : []
   return (
     <div>
       {exercises.map((ex, i) => (
@@ -113,9 +132,7 @@ export function ProgramDay({ day }: { day: DayData }) {
   const statusClass = day.status === 'completed' ? 'completed'
     : day.status === 'today' ? 'today' : 'upcoming'
 
-  const plannedExercises = day.planned
-    ? day.planned.split(',').map(e => e.trim()).filter(Boolean)
-    : []
+  const plannedExercises = day.planned ? splitExercises(day.planned) : []
 
   const hasLoggedData = day.source === 'logged' && day.exercises && day.exercises.length > 0
 

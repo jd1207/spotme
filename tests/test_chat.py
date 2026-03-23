@@ -136,7 +136,7 @@ def test_recovery_zone_none_score():
 
 @pytest.mark.asyncio
 async def test_chat_returns_text_and_layout():
-    with patch("server.services.claude_service._call_claude", new_callable=AsyncMock) as mock_call:
+    with patch("server.services.claude_service._call_claude_stateless", new_callable=AsyncMock) as mock_call:
         mock_call.return_value = '{"response": "Go heavy today", "layout": {"screen": "workout_session", "layout": [{"type": "header", "title": "Bench Day"}]}}'
         service = ClaudeService()
         result = await service.chat("what's my workout?", context="test context")
@@ -146,7 +146,7 @@ async def test_chat_returns_text_and_layout():
 
 @pytest.mark.asyncio
 async def test_chat_extracts_profile():
-    with patch("server.services.claude_service._call_claude", new_callable=AsyncMock) as mock_call:
+    with patch("server.services.claude_service._call_claude_stateless", new_callable=AsyncMock) as mock_call:
         mock_call.return_value = '{"response": "Nice to meet you!", "layout": null, "profile": {"name": "Jordan", "goals": "strength"}}'
         service = ClaudeService()
         result = await service.chat("I'm Jordan", context="test")
@@ -158,7 +158,7 @@ async def test_chat_extracts_profile():
 
 @pytest.mark.asyncio
 async def test_chat_returns_set_suggestion():
-    with patch("server.services.claude_service._call_claude", new_callable=AsyncMock) as mock_call:
+    with patch("server.services.claude_service._call_claude_stateless", new_callable=AsyncMock) as mock_call:
         mock_call.return_value = '{"response": "Hit 225 for 5 reps", "layout": null, "set_suggestion": {"exercise": "Bench Press", "weight": 225, "reps": 5, "basis": "based on last session"}}'
         service = ClaudeService()
         result = await service.chat("what should I do next?", context="test")
@@ -170,7 +170,7 @@ async def test_chat_returns_set_suggestion():
 
 @pytest.mark.asyncio
 async def test_chat_set_suggestion_null_when_absent():
-    with patch("server.services.claude_service._call_claude", new_callable=AsyncMock) as mock_call:
+    with patch("server.services.claude_service._call_claude_stateless", new_callable=AsyncMock) as mock_call:
         mock_call.return_value = '{"response": "Just chatting", "layout": null}'
         service = ClaudeService()
         result = await service.chat("how are you?", context="test")
@@ -179,7 +179,7 @@ async def test_chat_set_suggestion_null_when_absent():
 
 @pytest.mark.asyncio
 async def test_chat_set_suggestion_null_on_parse_failure():
-    with patch("server.services.claude_service._call_claude", new_callable=AsyncMock) as mock_call:
+    with patch("server.services.claude_service._call_claude_stateless", new_callable=AsyncMock) as mock_call:
         mock_call.return_value = "plain text, not json"
         service = ClaudeService()
         result = await service.chat("hello", context="test")
