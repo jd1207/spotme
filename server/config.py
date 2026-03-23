@@ -20,3 +20,5 @@ TIMEZONE = ZoneInfo("America/New_York")
 
 def today_eastern() -> str:
     return datetime.now(TIMEZONE).strftime("%Y-%m-%d")
+
+SESSION_ROLLOVER_HOUR = 4
