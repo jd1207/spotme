@@ -1,12 +1,14 @@
 import json
 import pytest
+from datetime import datetime
 from unittest.mock import AsyncMock, patch, MagicMock
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from server.database import Base
+from server.config import TIMEZONE
 from server.models import SystemMemory
-from server.services.session_manager import SessionManager
+from server.services.session_manager import SessionManager, session_date
 
 
 def _make_db():
@@ -73,3 +75,23 @@ def test_invalidate_session():
     mgr.get_or_create_session_id(db, "2026-03-23")
     mgr.invalidate_session(db)
     assert mgr.is_first_message(db, "2026-03-23") is True
+
+
+def test_session_date_before_rollover_returns_yesterday():
+    fake_now = datetime(2026, 3, 23, 3, 0, tzinfo=TIMEZONE)
+    assert session_date(now=fake_now) == "2026-03-22"
+
+
+def test_session_date_after_rollover_returns_today():
+    fake_now = datetime(2026, 3, 23, 5, 0, tzinfo=TIMEZONE)
+    assert session_date(now=fake_now) == "2026-03-23"
+
+
+def test_session_date_at_exactly_rollover_returns_today():
+    fake_now = datetime(2026, 3, 23, 4, 0, tzinfo=TIMEZONE)
+    assert session_date(now=fake_now) == "2026-03-23"
+
+
+def test_session_date_at_midnight_returns_yesterday():
+    fake_now = datetime(2026, 3, 23, 0, 0, tzinfo=TIMEZONE)
+    assert session_date(now=fake_now) == "2026-03-22"

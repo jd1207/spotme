@@ -2,10 +2,21 @@ import json
 import logging
 import os
 import uuid
+from datetime import datetime, timedelta
 
+from server.config import TIMEZONE, SESSION_ROLLOVER_HOUR
 from server.models import SystemMemory
 
 logger = logging.getLogger(__name__)
+
+
+def session_date(now: datetime | None = None) -> str:
+    """return the effective session date, treating hours before SESSION_ROLLOVER_HOUR as previous day"""
+    if now is None:
+        now = datetime.now(TIMEZONE)
+    if now.hour < SESSION_ROLLOVER_HOUR:
+        now = now - timedelta(days=1)
+    return now.strftime("%Y-%m-%d")
 
 SESSION_KEY = "active_session"
 SESSIONS_DIR = os.path.expanduser("~/.claude/projects/-home-deck-spotme")
@@ -19,8 +30,7 @@ class SessionManager:
             data = json.loads(row.content)
             if data.get("date") == today:
                 return data["session_id"]
-            # new day — delete old session file, create new
-            self._delete_session_file(data.get("session_id"))
+            # new day — overwrite db row (caller handles file cleanup via invalidate_session)
 
         new_id = str(uuid.uuid4())
         payload = json.dumps({"session_id": new_id, "date": today})
