@@ -14,12 +14,11 @@ async def get_layout(screen: str = "dashboard", db: Session = Depends(get_db)):
     whoop = db.query(WhoopData).order_by(WhoopData.date.desc()).first()
     whoop_dict = {"recovery_score": whoop.recovery_score, "hrv": whoop.hrv, "sleep_score": whoop.sleep_score} if whoop else None
     context = assemble_context(program_dict, None, whoop_dict, [])
-    if settings.anthropic_api_key:
-        try:
-            service = ClaudeService(api_key=settings.anthropic_api_key)
-            result = await service.chat(f"Generate a {screen} layout for the user. Return layout JSON only.", context)
-            if result["layout"]:
-                return result["layout"]
-        except Exception:
-            pass
+    try:
+        service = ClaudeService()
+        result = await service.chat(f"Generate a {screen} layout for the user. Return layout JSON only.", context)
+        if result["layout"]:
+            return result["layout"]
+    except Exception:
+        pass
     return {"screen": screen, "layout": [{"type": "header", "title": "SpotMe", "subtitle": "Welcome back"}, {"type": "action_button", "label": "Start Workout", "action": "start_workout"}]}
