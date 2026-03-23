@@ -83,9 +83,14 @@ Signal priority when conflicting: sleep hours > HRV trend > daily recovery score
 - Lower back: if user reports tightness on rows/deadlifts, don't increase weight, suggest bracing cues.
 - These thresholds calibrate over time. Use RPE feedback as ground truth.
 
-### Tool Behavior
-- Low-risk tools (log activity, update weight): execute then announce. Don't ask permission.
-- Destructive tools (delete activity): confirm with user first.
+### Action Bias
+- Be proactive. NEVER ask for permission or confirmation before taking action. This includes:
+  - Logging activities, updating weight, setting alarms — just do it and report what you did
+  - Updating training memory when the user provides corrections or new info — just update it
+  - Recording training log entries — just log them
+  - Estimating and tracking meals — just do it
+- The ONLY exception: deleting activities from Whoop (destructive, confirm first)
+- Do NOT say "Would you like me to...", "Should I...", "Want me to...", or "I can..." followed by a question. Act, then announce.
 - On tool error: say "Whoop disconnected" or "couldn't reach Whoop". Never show technical details.
 
 ### User Override
@@ -114,6 +119,8 @@ Be specific about your estimates. If the user just says "I had chicken and rice"
 
 RECOVERY_GREEN = 67
 RECOVERY_YELLOW = 34
+
+_session_lock = asyncio.Lock()
 
 WHOOP_TOOLS = [
     {
@@ -293,20 +300,7 @@ class ClaudeService:
     async def chat(self, message: str, context: str, db=None) -> dict:
         system = f"{SYSTEM_PROMPT}\n\nCurrent context:\n{context}"
         try:
-            from server.models import WhoopToken
-            whoop_connected = db.query(WhoopToken).first() is not None if db else False
-
-            if whoop_connected:
-                from server.services.whoop_tools import execute_whoop_tool
-                raw_text = await _call_claude_with_tools(
-                    system_prompt=system,
-                    message=message,
-                    tools=WHOOP_TOOLS,
-                    tool_executor=execute_whoop_tool,
-                    db=db,
-                )
-            else:
-                raw_text = await _call_claude(system, message)
+            raw_text = await _call_claude_stateless(system, message)
         except Exception as e:
             logger.error("claude call failed: %s", e)
             return {"response": "Having trouble reaching Claude right now. Try again in a sec.", "layout": None, "profile": None, "memory_update": None, "training_log_entry": None, "set_suggestion": None, "meal": None, "workout_plan": None}
@@ -340,7 +334,7 @@ class ClaudeService:
             "weak points, PRs they're chasing, injury history, preferred training style.\n"
             "Return ONLY a JSON array of question strings, nothing else."
         )
-        raw = await _call_claude(system, f"Athlete profile: {profile_summary}")
+        raw = await _call_claude_stateless(system, f"Athlete profile: {profile_summary}")
         try:
             # handle both raw array and code-fenced array
             import re
@@ -367,7 +361,7 @@ class ClaudeService:
     async def analyze_form(self, frames_base64: list, context: str) -> dict:
         system = "You are a strength coach analyzing lifting form. Identify issues, suggest corrections, note what looks good."
         message = f"Analyze this lifting form. Context: {context}"
-        raw_text = await _call_claude(system, message)
+        raw_text = await _call_claude_stateless(system, message)
         return {"analysis": raw_text}
 
 
@@ -388,11 +382,49 @@ def _extract_json(text: str) -> str:
     return stripped
 
 
-async def _call_claude(system_prompt: str, message: str) -> str:
-    """call claude via CLI subprocess (inherits OAuth session)."""
+async def _call_claude_session(
+    session_id: str,
+    message: str,
+    is_first: bool = False,
+    system_prompt: str | None = None,
+) -> str:
+    """call claude within a persistent daily session."""
+    async with _session_lock:
+        args = [CLAUDE_BIN, "--print", "--tools", ""]
+        if is_first:
+            args.extend(["--session-id", session_id, "--model", MODEL])
+            if system_prompt:
+                args.extend(["--append-system-prompt", system_prompt])
+        else:
+            args.extend(["--resume", session_id])
+        args.extend(["-p", message])
+
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise RuntimeError("claude cli timed out after 120s")
+        if proc.returncode != 0:
+            error = stderr.decode().strip()
+            logger.error("claude session error: %s", error)
+            raise RuntimeError(f"claude cli failed: {error}")
+        raw = stdout.decode().strip()
+        return _extract_json(raw)
+
+
+async def _call_claude_stateless(system_prompt: str, message: str) -> str:
+    """call claude without session persistence (for one-off calls)."""
     proc = await asyncio.create_subprocess_exec(
         CLAUDE_BIN, "--print",
+        "--no-session-persistence",
         "--model", MODEL,
+        "--tools", "",
         "--append-system-prompt", system_prompt,
         "-p", message,
         stdout=asyncio.subprocess.PIPE,
@@ -410,54 +442,3 @@ async def _call_claude(system_prompt: str, message: str) -> str:
         raise RuntimeError(f"claude cli failed: {error}")
     raw = stdout.decode().strip()
     return _extract_json(raw)
-
-
-MAX_TOOL_ITERATIONS = 3
-
-
-async def _call_claude_with_tools(
-    system_prompt: str,
-    message: str,
-    tools: list[dict],
-    tool_executor,
-    db,
-    history: list[dict] | None = None,
-) -> str:
-    """call claude with tool-use via CLI, parsing tool calls from JSON response."""
-    # embed tool descriptions in the system prompt
-    tool_desc = "\n\n## Available Tools\n"
-    tool_desc += "When you need to use a tool, include a \"tool_calls\" array in your JSON response:\n"
-    tool_desc += '{"response": "...", "tool_calls": [{"name": "tool_name", "arguments": {...}}]}\n'
-    tool_desc += "After tool execution, you'll receive results and can respond.\n\n"
-    for tool in tools:
-        params = tool["input_schema"].get("properties", {})
-        required = tool["input_schema"].get("required", [])
-        param_strs = [f"  - {k} ({'required' if k in required else 'optional'}): {v.get('description', v.get('type', ''))}" for k, v in params.items()]
-        tool_desc += f"### {tool['name']}\n{tool['description']}\nParameters:\n" + "\n".join(param_strs) + "\n\n"
-
-    full_system = system_prompt + tool_desc
-
-    for iteration in range(MAX_TOOL_ITERATIONS):
-        if iteration == 0:
-            raw_text = await _call_claude(full_system, message)
-        else:
-            # follow-up with tool results
-            followup = f"Tool results:\n{json.dumps(tool_results_summary)}\n\nRespond to the user based on these results."
-            raw_text = await _call_claude(full_system, followup)
-
-        try:
-            parsed = json.loads(raw_text)
-        except json.JSONDecodeError:
-            return raw_text
-
-        tool_calls = parsed.get("tool_calls", [])
-        if not tool_calls:
-            return raw_text
-
-        # execute tool calls
-        tool_results_summary = []
-        for tc in tool_calls:
-            result = await tool_executor(tc["name"], tc.get("arguments", {}), db)
-            tool_results_summary.append({"tool": tc["name"], "result": result})
-
-    return raw_text
