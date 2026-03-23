@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from server.database import Base, get_db
-from server.models import SystemMemory, Program, Workout
+from server.models import SystemMemory, Program, Workout, Exercise
 
 SAMPLE_PLAN = """## Weekly Schedule
 - Friday: Pull / Back
@@ -130,10 +130,13 @@ def test_program_stats():
     program = Program(name="Test", goal="315", phase="peak")
     db.add(program)
     db.commit()
-    db.add(Workout(
+    w1 = Workout(
         program_id=program.id, date=date.today().isoformat(),
         type="strength", status="completed", duration=45,
-    ))
+    )
+    db.add(w1)
+    db.flush()
+    db.add(Exercise(workout_id=w1.id, name="Bench Press", order=1))
     db.add(Workout(
         program_id=program.id, date=date.today().isoformat(),
         type="strength", status="active",

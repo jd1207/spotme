@@ -72,14 +72,54 @@ def _parse_templates(content: str, schedule: dict) -> dict:
                 break
         if not section:
             continue
-        lines = [
-            l.strip().lstrip('- ')
-            for l in section.split('\n')
-            if l.strip() and not l.strip().startswith('#')
-        ]
+        lines = []
+        for l in section.split('\n'):
+            l = l.strip()
+            if not l or l.startswith('#'):
+                continue
+            # skip status/metadata lines
+            l_lower = l.lower()
+            if any(kw in l_lower for kw in ['status:', 'completed', 'duration:', 'workout duration']):
+                continue
+            # strip markdown bold/emphasis and list markers
+            l = l.lstrip('- ')
+            l = l.replace('**', '').replace('*', '')
+            # strip numbered prefixes (e.g. "1. ", "2. ")
+            l = re.sub(r'^\d+\.\s*', '', l)
+            # extract just exercise name from detailed entries
+            # e.g. "Pull-ups: 5 sets (8,7,6,6,5 reps) - Bodyweight" → "Pull-ups 5 sets"
+            colon_match = re.match(r'^([^:]+):\s*(.+)$', l)
+            if colon_match:
+                name = colon_match.group(1).strip()
+                detail = colon_match.group(2).strip()
+                # extract set/rep scheme, drop parenthetical details and annotations
+                scheme = re.match(r'(\d+\s*sets?\s*(?:x\s*[\d\-]+)?|\d+x[\d\-]+)', detail)
+                if scheme:
+                    l = f"{name} {scheme.group(1).strip()}"
+                else:
+                    l = name
+            if l:
+                lines.append(l)
         if lines:
             templates[day_type] = ', '.join(lines)
     return templates
+
+
+def _parse_week_start_date(title: str) -> str | None:
+    """extract a start date from week title like 'started 3/15' or 'Sun 3/22'"""
+    from datetime import date as dt_date
+    current_year = dt_date.today().year
+    # "started M/D"
+    m = re.search(r'started\s+(\d{1,2})/(\d{1,2})', title)
+    if m:
+        month, day = int(m.group(1)), int(m.group(2))
+        return dt_date(current_year, month, day).isoformat()
+    # "Sun M/D" or "M/D" as first date mention
+    m = re.search(r'(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+(\d{1,2})/(\d{1,2})', title)
+    if m:
+        month, day = int(m.group(1)), int(m.group(2))
+        return dt_date(current_year, month, day).isoformat()
+    return None
 
 
 def _parse_weeks(content: str, schedule: dict, templates: dict) -> list:
@@ -90,6 +130,9 @@ def _parse_weeks(content: str, schedule: dict, templates: dict) -> list:
 
     for i, match in enumerate(matches):
         title = match.group(1).strip()
+        # strip markdown bold/emphasis and emoji artifacts
+        title = title.replace('**', '').replace('*', '')
+        title = re.sub(r'[✅❌⬜🔲]\s*', '', title).strip()
         start = match.end()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
         body = content[start:end].strip()
@@ -97,13 +140,19 @@ def _parse_weeks(content: str, schedule: dict, templates: dict) -> list:
         items = []
         for line in body.split('\n'):
             line = line.strip()
+            # strip markdown bold/emphasis from items too
+            line = line.replace('**', '').replace('*', '')
             if line.startswith('- '):
                 items.append(line[2:].strip())
 
         week_num_match = re.search(r'Week (\d+)', title)
         week_num = int(week_num_match.group(1)) if week_num_match else len(weeks) + 1
+
+        # parse start date from title (e.g. "started 3/15" or "Sun 3/22")
+        start_date = _parse_week_start_date(title)
+
         days = _build_days(schedule, templates, items)
-        weeks.append({"number": week_num, "title": title, "days": days})
+        weeks.append({"number": week_num, "title": title, "days": days, "start_date": start_date})
 
     return weeks
 
@@ -112,6 +161,7 @@ def _build_days(schedule: dict, templates: dict, items: list) -> list:
     """build day list from schedule, templates, and week-specific items"""
     days = []
     visited_compound = set()
+    matched_items: set[int] = set()
 
     for day_abbrev in DAY_ORDER:
         day_type = schedule.get(day_abbrev, "")
@@ -132,12 +182,15 @@ def _build_days(schedule: dict, templates: dict, items: list) -> list:
         note = ""
         status = "upcoming"
 
-        for item in items:
+        for idx, item in enumerate(items):
+            if idx in matched_items:
+                continue
             item_lower = item.lower()
             type_first_word = day_type.lower().split()[0]
             if type_first_word not in item_lower:
                 continue
 
+            matched_items.add(idx)
             colon_idx = item.find(':')
             raw = item[colon_idx + 1:].strip() if colon_idx > 0 else item
 
@@ -163,6 +216,17 @@ def _build_days(schedule: dict, templates: dict, items: list) -> list:
             "note": note,
             "status": status,
         })
+
+    # second pass: assign unmatched items containing weight patterns to bench days
+    unmatched = [items[i] for i in range(len(items)) if i not in matched_items]
+    if unmatched:
+        for item in unmatched:
+            if not re.search(r'\d{2,3}x\d', item):
+                continue
+            for day in days:
+                if 'bench' in day["type"].lower() and not day["planned"]:
+                    day["planned"] = item
+                    break
 
     return days
 

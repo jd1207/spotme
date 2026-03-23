@@ -14,6 +14,7 @@ interface WeekData {
   number: number
   title: string
   days: DayData[]
+  start_date?: string | null
 }
 
 interface ProgressionPoint { week: number; weight: number; label: string }
