@@ -15,6 +15,34 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   interviewQuestions: (profile: { name: string; experience: string; goals: string; frequency: string; equipment: string }) => request<{ questions: string[] }>('/interview/questions', { method: 'POST', body: JSON.stringify(profile) }),
   chat: (message: string, workoutId?: number, date?: string) => request<import('./types').ChatResponse>('/chat', { method: 'POST', body: JSON.stringify({ message, workout_id: workoutId ?? null, date: date ?? null }) }),
+  chatStream: async (message: string, date?: string, onToken?: (text: string) => void): Promise<string> => {
+    const resp = await fetch(`${BASE}/chat/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, workout_id: null, date: date ?? null }),
+    })
+    if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+    const reader = resp.body!.getReader()
+    const decoder = new TextDecoder()
+    let full = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      const chunk = decoder.decode(value, { stream: true })
+      for (const line of chunk.split('\n')) {
+        if (!line.startsWith('data: ')) continue
+        try {
+          const data = JSON.parse(line.slice(6))
+          if (data.done) return full
+          if (data.text) {
+            full += data.text
+            onToken?.(full)
+          }
+        } catch { /* partial json line, skip */ }
+      }
+    }
+    return full
+  },
   startWorkout: (type?: string) => request<{ id: number; date: string; status: string; resumed: boolean }>('/workout/start', { method: 'POST', body: JSON.stringify({ type: type ?? 'strength' }) }),
   getRecentWorkouts: () => request<Array<{ id: number; date: string; type: string; status: string; duration: number | null; exercises: Array<{ name: string; sets: Array<{ weight: number; reps: number; rpe: number | null }> }>; recovery: number | null }>>('/workout/recent'),
   getPrs: () => request<{ prs: Array<{ exercise: string; weight: number; reps: number; e1rm: number; date: string }> }>('/progress/prs'),
